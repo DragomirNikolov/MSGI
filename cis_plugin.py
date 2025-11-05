@@ -43,6 +43,12 @@ class SEVIRI_L2_CLAAS(AProduct):
                 subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             except subprocess.CalledProcessError as e:
                 raise RuntimeError(f"nccopy conversion failed: {e.stderr.decode()}") from e
+        def remove_data(filenames):
+            for filename in filenames:
+                if os.path.exists(filename):
+                    os.remove(filename)
+                else:
+                    logging.warning(f"File {filename} does not exist, cannot remove.")
         #"Read in and return the relevant data, metadata and coords for the specified filename."
         logging.debug("Creating data object for variable " + variable)
         # reading coordinates
@@ -66,7 +72,7 @@ class SEVIRI_L2_CLAAS(AProduct):
         logging.info(type(var_data))
         logging.info(type(metadata))
         logging.info(type(coords))
-    
+        remove_data(temp_filenames)
         return UngriddedData(var_data,metadata,coords)
 
     def create_coords(self, filenames, variable=None):
