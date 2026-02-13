@@ -1,0 +1,38 @@
+# claas3_cpp.yaml
+name: claas3_cpp
+reader:
+  name: claas3_cpp
+  description: >
+    Reader for CLAAS-3 CPP L2 swath/grid in SEVIRI native geostationary projection.
+    Handles variables including cph, uses CF grid_mapping and x/y (radians).
+  sensors: [seviri]
+  reader_type: cf
+
+file_types:
+  claas3_cpp_nc:
+    # file_reader: xarray
+    file_patterns:
+      - 'CPPin(?P<start_time>\d{14}).*SVMSG(?P<platform>\d{2})MD\.nc'
+    # Let Satpy parse CF attrs and the geostationary grid_mapping "projection"
+    # x/y coordinates are angular (radians) as per CF; Satpy/pyresample understands this.
+
+datasets:
+  # expose only the datasets you need; cph is the one we’ll aggregate
+  cph:
+    name: cph
+    file_type: claas3_cpp_nc
+    standard_name: thermodynamic_phase_of_cloud_water_particles_at_cloud_top
+    units: "1"
+    coordinates: [x, y]
+    attrs_from: [time, projection]
+    # Keep flag metadata
+    flag_values: [0, 1, 2]
+    flag_meanings: [clear, liquid, ice]
+
+  # If you also want the extended phase available:
+  # cph_ext:
+  #   name: cph_ext
+  #   file_type: claas3_cpp_nc
+  #   units: "1"
+  #   coordinates: [x, y]
+  #   attrs_from: [time, projection]
