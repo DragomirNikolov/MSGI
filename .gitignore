@@ -54,6 +54,9 @@ cover/
 # Translations
 *.mo
 *.pot
+# Climate standards
+*.nc
+
 
 # Django stuff:
 *.log
