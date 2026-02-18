@@ -70,7 +70,7 @@ def _height_to_km(height_values: np.ndarray, units: str | None) -> np.ndarray:
     return h
 
 
-def extract_cloud_top_phase4(ds: xr.Dataset) -> xr.Dataset:
+def extract_cloud_top_phase4(ds: xr.Dataset, file_ind: int = 1) -> xr.Dataset:
     """
     Extract cloud-top phase in 4 classes for each along-track profile.
 
@@ -203,7 +203,7 @@ def extract_cloud_top_phase4(ds: xr.Dataset) -> xr.Dataset:
     out["cloud_top_height_km"].attrs.update({"long_name": "Cloud-top height", "units": "km"})
     out.attrs["source"] = "Derived from DARDAR-MASK simplified categorization"
     out.attrs["height_index_increasing"] = str(bool(increasing_with_index))
-
+    out.to_netcdf(f"/wolke_scratch/dnikolo/MSGI/DARDAR_analysis/debug/cloud_top_observations_{file_ind}.nc")  # for debugging
     return out
 
 def round_ns_timestamps(ts: np.ndarray, dt_min = 15) -> np.ndarray:
@@ -297,7 +297,7 @@ def bin_cloud_top_phase4_latlon(
     Bin per-profile cloud-top phase into latitude/longitude bins.
 
     Outputs per-bin:
-    - cph_mean: mean cloudy-top phase score (liquid=0, mixed=0.5, ice=1),
+    - cph_mean: mean cloudy-top phase score (liquid=1, mixed=1.5, ice=2),
       set to -1 where no cloudy tops exist.
     - frac_*: class fractions among all observations in each bin
     - n_*: observation counts
@@ -367,9 +367,9 @@ def bin_cloud_top_phase4_latlon(
 
     # Mean phase score over cloudy-only tops: liquid=0, mixed=0.5, ice=1
     score = np.full(phase_valid.shape, np.nan, dtype=np.float64)
-    score[phase_valid == PHASE_LIQUID] = 0.0
-    score[phase_valid == PHASE_MIXED] = 0.5
-    score[phase_valid == PHASE_ICE] = 1.0
+    score[phase_valid == PHASE_LIQUID] = 1.0
+    score[phase_valid == PHASE_MIXED] = 1.5
+    score[phase_valid == PHASE_ICE] = 2.0
     cloudy = np.isfinite(score)
 
     np.add.at(phase_sum_cloudy, (lat_idx[cloudy], lon_idx[cloudy]), score[cloudy])
@@ -377,8 +377,9 @@ def bin_cloud_top_phase4_latlon(
     np.add.at(height_sq_sum_cloudy, (lat_idx[cloudy], lon_idx[cloudy]), height_valid[cloudy] ** 2)
 
     # Reference datetime to safely accumulate timedeltas
+    measured = n_obs > 0
     time_ref = time_valid.min()
-    np.add.at(time_sum_cloudy, (lat_idx[cloudy], lon_idx[cloudy]), time_valid[cloudy] - time_ref)
+    np.add.at(time_sum_cloudy, (lat_idx, lon_idx), time_valid - time_ref)
 
     n_cloudy = n_liquid + n_ice + n_mixed
     cloudy_bins = n_cloudy > 0
@@ -395,6 +396,7 @@ def bin_cloud_top_phase4_latlon(
     mean_time = np.full(shape, np.datetime64("NaT", "ns"), dtype="datetime64[ns]")
 
     mean_phase[cloudy_bins] = (phase_sum_cloudy[cloudy_bins] / n_cloudy[cloudy_bins]).astype(np.float32)
+    mean_phase[obs_bins & ~cloudy_bins] = 0.0  # defined as no cloudy tops among observations
     mean_height[cloudy_bins] = (height_sum_cloudy[cloudy_bins] / n_cloudy[cloudy_bins]).astype(np.float32)
 
     var_height[cloudy_bins] = (
@@ -403,8 +405,8 @@ def bin_cloud_top_phase4_latlon(
     var_height[cloudy_bins] = np.maximum(var_height[cloudy_bins], 0.0)
     std_height[cloudy_bins] = np.sqrt(var_height[cloudy_bins]).astype(np.float32)
 
-    mean_time[cloudy_bins] = (
-        time_sum_cloudy[cloudy_bins] / n_cloudy[cloudy_bins] + time_ref
+    mean_time[obs_bins] = (
+        time_sum_cloudy[obs_bins] / n_obs[obs_bins] + time_ref
     ).astype("datetime64[ns]")
 
     rounded_mean_time = round_ns_timestamps(mean_time, dt_min=15)
@@ -453,7 +455,7 @@ def bin_cloud_top_phase4_latlon(
     # rounded_mean_time (2D)
     rmt = rounded_mean_time.astype("datetime64[s]")
     rmt_sec = rmt.astype(np.int64)
-    fill = np.int32(-2147483647)  # int32 fill
+    fill = np.int32(-1)  # int32 fill
     rmt_sec = rmt_sec.astype(np.int32)
     rmt_sec[np.isnat(rmt)] = fill
 
@@ -472,7 +474,7 @@ def bin_cloud_top_phase4_latlon(
             "n_ice": (("time_bin", "lat_bin", "lon_bin"), n_ice_3d),
             "n_mixed": (("time_bin", "lat_bin", "lon_bin"), n_mixed_3d),
             "n_cloudy": (("time_bin", "lat_bin", "lon_bin"), n_cloudy_3d),
-            "rounded_mean_time": (("lat_bin", "lon_bin"), rmt_sec),
+            "rounded_mean_time": (("lat_bin", "lon_bin"), rmt_sec.astype(np.int32)),
         },
         coords={
             "time_bin": ("time_bin", time_bin_sec),
@@ -517,15 +519,14 @@ def bin_cloud_top_phase4_latlon(
     # ---------- Data variable metadata ----------
     out["cph_mean"].attrs.update({
         "long_name": "Mean cloud-top phase score over cloudy tops",
-        "units": "1",
         "_FillValue": np.float32(cph_fill),
         "missing_value": np.float32(cph_fill),
         "valid_min": np.float32(0.0),
-        "valid_max": np.float32(1.0),
-        "flag_values": np.array([-1.0, 0.0, 0.5, 1.0], dtype=np.float32),
-        "flag_meanings": "no_cloudy_tops liquid mixed ice",
+        "valid_max": np.float32(2.0),
+        "flag_values": np.array([-1.0, 0.0 , 1.0, 1.5, 2], dtype=np.float32),
+        "flag_meanings": "no_measurement no_cloudy_tops liquid mixed ice",
         "coordinates": coord_ref,
-        "comment": "Computed from cloudy samples only: liquid=0, mixed=0.5, ice=1; -1 indicates no cloudy tops in bin.",
+        "comment": "Computed from cloudy samples only: liquid=1, mixed=1.5, ice=2; -1 indicates no measurements in bin.",
     })
 
     out["cth_mean"].attrs.update({
@@ -588,11 +589,12 @@ def bin_cloud_top_phase4_latlon(
         "units": epoch_units,
         "calendar": "standard",
         "_FillValue": fill,
-        "comment": f"{fill} indicates no cloudy tops in bin.",
     })
-
-    for v in out.data_vars:
-        out[v].attrs.pop("coordinates", None)
+    out["rounded_mean_time"].encoding.update({
+        "dtype": "int32",
+    })
+    # for v in out.data_vars:
+    #     out[v].attrs.pop("coordinates", None)
 
     # ---------- Global metadata ----------
     out.attrs.update({
@@ -678,7 +680,7 @@ def _process_file(in_path: Path, out_path: Path, bin_size_deg: float, file_ind=1
         raise ValueError("out_path must be provided to _process_file")
 
     with xr.open_dataset(in_path) as ds_in:
-        out_profile = extract_cloud_top_phase4(ds_in)
+        out_profile = extract_cloud_top_phase4(ds_in,file_ind)
 
         # Unit-test-like checks requested by specification.
         phase = np.asarray(out_profile["cloud_top_phase_4class"].values)
@@ -691,7 +693,7 @@ def _process_file(in_path: Path, out_path: Path, bin_size_deg: float, file_ind=1
 
         out_binned = bin_cloud_top_phase4_latlon(out_profile, bin_size_deg=bin_size_deg)
         # out_binned.to_netcdf(out_path)
-        groups = list(out_binned.groupby("time_bin"))
+        groups = list(out_binned.groupby("time_bin",squeeze=False))
         datasets = [g for _, g in groups]
         # dt = np.datetime64("1970-01-01T00:00:00", "s") + np.timedelta64(int(t), "s")
         epoch = np.datetime64("1970-01-01T00:00:00", "s")
@@ -746,9 +748,9 @@ def merge_ddct_suffix_files_in_dir(day_dir: Path, workers: int = 8) -> None:
         m = pattern.match(f.name)
         if not m:
             continue
-        key = m.group(1)
+        key = m.group(0,1)
         groups.setdefault(key, []).append(f)
-
+        # print(key)
     if not groups:
         print(f"[merge-ddct] no DD_CT_*_<n>.nc files in {day_dir}")
         return
@@ -756,9 +758,9 @@ def merge_ddct_suffix_files_in_dir(day_dir: Path, workers: int = 8) -> None:
     # 2) Worker for one timestamp key
     def process_key(key: str) -> None:
         files = sorted(groups[key])
-        out = day_dir / f"{key}.nc"
-        tmp = day_dir / f"{key}.tmp.nc"
-
+        out = day_dir / f"{key[1]}.nc"
+        tmp = day_dir / f"{key[1]}.tmp.nc"
+        # print(len(files))
         try:
             if len(files) == 1:
                 # No duplicate: just move to suffixless name
@@ -782,7 +784,7 @@ def merge_ddct_suffix_files_in_dir(day_dir: Path, workers: int = 8) -> None:
                 if f.exists():
                     f.unlink()
 
-            # print(f"[merge] {len(files)} files -> {out.name}")
+            print(f"[merge] {len(files)} files -> {out.name}")
 
         except Exception as e:
             if tmp.exists():
@@ -840,7 +842,7 @@ if __name__ == "__main__":
     process_multiple_days(
         base_input_dir=Path("/wolke_scratch/dnikolo/MSGI/DARDAR_analysis/DARDAR-MASK"),
         base_output_dir=Path("/wolke_scratch/dnikolo/MSGI/DARDAR_analysis/CPH_data"),
-        start_date="20080510",
+        start_date="20080502",
         end_date="20080510",
         bin_size_deg=0.3,
         n_workers=8
