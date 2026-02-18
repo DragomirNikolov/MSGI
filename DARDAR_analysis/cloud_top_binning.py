@@ -10,6 +10,9 @@ from multiprocessing import Pool, cpu_count
 import subprocess
 from datetime import datetime, timedelta
 from os import path as os_path
+import re
+import shutil
+from concurrent.futures import ThreadPoolExecutor
 
 # Class encoding
 PHASE_NO_CLOUD = np.int8(0)
@@ -205,7 +208,7 @@ def extract_cloud_top_phase4(ds: xr.Dataset) -> xr.Dataset:
 
 def round_ns_timestamps(ts: np.ndarray, dt_min = 15) -> np.ndarray:
     """
-    Round numpy datetime64[ns] array to nearest 5 minutes.
+    Round numpy datetime64[ns] array to nearest dt_min minutes.
 
     Parameters
     ----------
@@ -294,12 +297,10 @@ def bin_cloud_top_phase4_latlon(
     Bin per-profile cloud-top phase into latitude/longitude bins.
 
     Outputs per-bin:
-    - mean_cloud_top_phase_liquid0_ice1:
-      liquid=0, mixed=0.5, ice=1; set to -1 where no cloudy tops exist.
-    - class fractions among all observations in each bin:
-      frac_no_cloud, frac_liquid, frac_ice, frac_mixed
-    - observation counts:
-      n_obs, n_no_cloud, n_liquid, n_ice, n_mixed, n_cloudy
+    - cph_mean: mean cloudy-top phase score (liquid=0, mixed=0.5, ice=1),
+      set to -1 where no cloudy tops exist.
+    - frac_*: class fractions among all observations in each bin
+    - n_*: observation counts
     """
     if bin_size_deg <= 0:
         raise ValueError("bin_size_deg must be > 0.")
@@ -311,7 +312,7 @@ def bin_cloud_top_phase4_latlon(
     lon = np.asarray(profile_ds["CLOUDSAT_Longitude"].values, dtype=np.float64)
     phase = np.asarray(profile_ds["cloud_top_phase_4class"].values, dtype=np.int8)
     time = np.asarray(profile_ds["CLOUDSAT_UTC_Time"].values)
-    height = np.asarray(profile_ds["cloud_top_height_km"].values, dtype=np.float64) 
+    height = np.asarray(profile_ds["cloud_top_height_km"].values, dtype=np.float64)
 
     valid_geo = np.isfinite(lat) & np.isfinite(lon)
     if not np.any(valid_geo):
@@ -321,7 +322,7 @@ def bin_cloud_top_phase4_latlon(
     lon_valid = lon[valid_geo]
     phase_valid = phase[valid_geo]
     height_valid = height[valid_geo]
-    time_valid = time[valid_geo]    
+    time_valid = time[valid_geo]
 
     lat_min = np.floor(np.nanmin(lat_valid) / bin_size_deg) * bin_size_deg
     lat_max = np.ceil(np.nanmax(lat_valid) / bin_size_deg) * bin_size_deg
@@ -339,12 +340,12 @@ def bin_cloud_top_phase4_latlon(
     lat_idx = np.digitize(lat_valid, lat_edges) - 1
     lon_idx = np.digitize(lon_valid, lon_edges) - 1
     in_bounds = (lat_idx >= 0) & (lat_idx < n_lat) & (lon_idx >= 0) & (lon_idx < n_lon)
+
     lat_idx = lat_idx[in_bounds]
     lon_idx = lon_idx[in_bounds]
     phase_valid = phase_valid[in_bounds]
     height_valid = height_valid[in_bounds]
-    time_valid = time_valid[in_bounds].astype("timedelta64[ns]")
-    
+    time_valid = time_valid[in_bounds].astype("datetime64[ns]")
 
     shape = (n_lat, n_lon)
     n_obs = np.zeros(shape, dtype=np.int32)
@@ -352,12 +353,11 @@ def bin_cloud_top_phase4_latlon(
     n_liquid = np.zeros(shape, dtype=np.int32)
     n_ice = np.zeros(shape, dtype=np.int32)
     n_mixed = np.zeros(shape, dtype=np.int32)
+
     phase_sum_cloudy = np.zeros(shape, dtype=np.float64)
     height_sum_cloudy = np.zeros(shape, dtype=np.float64)
+    height_sq_sum_cloudy = np.zeros(shape, dtype=np.float64)
     time_sum_cloudy = np.zeros(shape, dtype="timedelta64[ns]")
-    height_std_sum_cloudy = np.zeros(shape, dtype=np.float64)
-    pressure_sum_cloudy = np.zeros(shape, dtype=np.float64)
-    pressure_std_sum_cloudy = np.zeros(shape, dtype=np.float64)
 
     np.add.at(n_obs, (lat_idx, lon_idx), 1)
     np.add.at(n_no_cloud, (lat_idx[phase_valid == PHASE_NO_CLOUD], lon_idx[phase_valid == PHASE_NO_CLOUD]), 1)
@@ -365,53 +365,61 @@ def bin_cloud_top_phase4_latlon(
     np.add.at(n_ice, (lat_idx[phase_valid == PHASE_ICE], lon_idx[phase_valid == PHASE_ICE]), 1)
     np.add.at(n_mixed, (lat_idx[phase_valid == PHASE_MIXED], lon_idx[phase_valid == PHASE_MIXED]), 1)
 
-    # Mean phase score over cloudy-only tops: liquid=0, mixed=0.5, ice=1.
+    # Mean phase score over cloudy-only tops: liquid=0, mixed=0.5, ice=1
     score = np.full(phase_valid.shape, np.nan, dtype=np.float64)
     score[phase_valid == PHASE_LIQUID] = 0.0
     score[phase_valid == PHASE_MIXED] = 0.5
     score[phase_valid == PHASE_ICE] = 1.0
     cloudy = np.isfinite(score)
+
     np.add.at(phase_sum_cloudy, (lat_idx[cloudy], lon_idx[cloudy]), score[cloudy])
     np.add.at(height_sum_cloudy, (lat_idx[cloudy], lon_idx[cloudy]), height_valid[cloudy])
-    np.add.at(height_std_sum_cloudy, (lat_idx[cloudy], lon_idx[cloudy]), height_valid[cloudy]**2)
-    # This is a reference datetime for the time sums, so that we don't have to worry about overflow when summing many datetimes. 
-    # The final mean times will be offset from this by a reasonable amount, so it won't cause issues as long as it's not NaT.
+    np.add.at(height_sq_sum_cloudy, (lat_idx[cloudy], lon_idx[cloudy]), height_valid[cloudy] ** 2)
+
+    # Reference datetime to safely accumulate timedeltas
     time_ref = time_valid.min()
-    np.add.at(time_sum_cloudy, (lat_idx[cloudy], lon_idx[cloudy]), time_valid[cloudy]-time_ref)
+    np.add.at(time_sum_cloudy, (lat_idx[cloudy], lon_idx[cloudy]), time_valid[cloudy] - time_ref)
 
     n_cloudy = n_liquid + n_ice + n_mixed
-    mean_phase = np.full(shape, -1.0, dtype=np.float32)
-    mean_height = np.full(shape, -1.0, dtype=np.float32)
+    cloudy_bins = n_cloudy > 0
+    obs_bins = n_obs > 0
+
+    # Use explicit sentinels for "defined but no cloudy tops"
+    cph_fill = np.float32(-1.0)
+    cth_fill = np.float32(-1.0)
+
+    mean_phase = np.full(shape, cph_fill, dtype=np.float32)
+    mean_height = np.full(shape, cth_fill, dtype=np.float32)
     var_height = np.full(shape, np.nan, dtype=np.float64)
     std_height = np.full(shape, np.nan, dtype=np.float32)
-    mean_time = np.full(shape, np.datetime64('NaT','ns'), dtype="datetime64[ns]")
-    cloudy_bins = n_cloudy > 0
+    mean_time = np.full(shape, np.datetime64("NaT", "ns"), dtype="datetime64[ns]")
+
     mean_phase[cloudy_bins] = (phase_sum_cloudy[cloudy_bins] / n_cloudy[cloudy_bins]).astype(np.float32)
     mean_height[cloudy_bins] = (height_sum_cloudy[cloudy_bins] / n_cloudy[cloudy_bins]).astype(np.float32)
-    var_height[cloudy_bins] = (
-        height_std_sum_cloudy[cloudy_bins] / n_cloudy[cloudy_bins]
-    ) - (mean_height[cloudy_bins].astype(np.float64) ** 2)
 
-    # clamp numerical negatives
+    var_height[cloudy_bins] = (
+        height_sq_sum_cloudy[cloudy_bins] / n_cloudy[cloudy_bins]
+    ) - (mean_height[cloudy_bins].astype(np.float64) ** 2)
     var_height[cloudy_bins] = np.maximum(var_height[cloudy_bins], 0.0)
     std_height[cloudy_bins] = np.sqrt(var_height[cloudy_bins]).astype(np.float32)
-    mean_time[cloudy_bins] = (time_sum_cloudy[cloudy_bins] / n_cloudy[cloudy_bins]+time_ref).astype("datetime64[ns]")
-    rounded_mean_time=round_ns_timestamps(mean_time,dt_min=15)
+
+    mean_time[cloudy_bins] = (
+        time_sum_cloudy[cloudy_bins] / n_cloudy[cloudy_bins] + time_ref
+    ).astype("datetime64[ns]")
+
+    rounded_mean_time = round_ns_timestamps(mean_time, dt_min=15)
     valid_time = ~np.isnat(rounded_mean_time)
     if not np.any(valid_time):
-        # time_dim_values = np.array([], dtype="datetime64[ns]")
         raise ValueError("No valid mean times found for cloudy bins, cannot construct time dimension.")
-    else:
-        tmin = rounded_mean_time[valid_time].min()
-        tmax = rounded_mean_time[valid_time].max()
-        time_dim_values = dt_arange(tmin, tmax, dt_min=15)
-    print(np.nanmin(rounded_mean_time), np.nanmax(rounded_mean_time))
+    tmin = rounded_mean_time[valid_time].min()
+    tmax = rounded_mean_time[valid_time].max()
+    time_dim_values = dt_arange(tmin, tmax, dt_min=15)
 
     frac_no_cloud = np.full(shape, np.nan, dtype=np.float32)
     frac_liquid = np.full(shape, np.nan, dtype=np.float32)
     frac_ice = np.full(shape, np.nan, dtype=np.float32)
     frac_mixed = np.full(shape, np.nan, dtype=np.float32)
-    obs_bins = n_obs > 0
+
     frac_no_cloud[obs_bins] = (n_no_cloud[obs_bins] / n_obs[obs_bins]).astype(np.float32)
     frac_liquid[obs_bins] = (n_liquid[obs_bins] / n_obs[obs_bins]).astype(np.float32)
     frac_ice[obs_bins] = (n_ice[obs_bins] / n_obs[obs_bins]).astype(np.float32)
@@ -420,101 +428,182 @@ def bin_cloud_top_phase4_latlon(
     lat_centers = (lat_edges[:-1] + lat_edges[1:]) / 2.0
     lon_centers = (lon_edges[:-1] + lon_edges[1:]) / 2.0
 
-    print("Binning complete. Constructing output dataset...")
-    print(f"Time bins: {time_dim_values.size}, Lat bins: {n_lat}, Lon bins: {n_lon}")
-    mean_phase_3d   = scatter_2d_to_3d_by_time(mean_phase,   rounded_mean_time, time_dim_values, fill_value=np.float32(-1.0))
-    mean_height_3d  = scatter_2d_to_3d_by_time(mean_height,  rounded_mean_time, time_dim_values, fill_value=np.float32(-1.0))
-    std_height_3d   = scatter_2d_to_3d_by_time(std_height,   rounded_mean_time, time_dim_values, fill_value=np.float32(np.nan))
-    frac_no_cloud_3d= scatter_2d_to_3d_by_time(frac_no_cloud,rounded_mean_time, time_dim_values, fill_value=np.float32(np.nan))
-    frac_liquid_3d  = scatter_2d_to_3d_by_time(frac_liquid,  rounded_mean_time, time_dim_values, fill_value=np.float32(np.nan))
-    frac_ice_3d     = scatter_2d_to_3d_by_time(frac_ice,     rounded_mean_time, time_dim_values, fill_value=np.float32(np.nan))
-    frac_mixed_3d   = scatter_2d_to_3d_by_time(frac_mixed,   rounded_mean_time, time_dim_values, fill_value=np.float32(np.nan))
-    n_obs_3d        = scatter_2d_to_3d_by_time(n_obs,        rounded_mean_time, time_dim_values, fill_value=np.int32(0))
-    n_no_cloud_3d   = scatter_2d_to_3d_by_time(n_no_cloud,   rounded_mean_time, time_dim_values, fill_value=np.int32(0))
-    n_liquid_3d     = scatter_2d_to_3d_by_time(n_liquid,     rounded_mean_time, time_dim_values, fill_value=np.int32(0))
-    n_ice_3d        = scatter_2d_to_3d_by_time(n_ice,        rounded_mean_time, time_dim_values, fill_value=np.int32(0))
-    n_mixed_3d      = scatter_2d_to_3d_by_time(n_mixed,      rounded_mean_time, time_dim_values, fill_value=np.int32(0))
-    n_cloudy_3d     = scatter_2d_to_3d_by_time(n_cloudy,     rounded_mean_time, time_dim_values, fill_value=np.int32(0))
-    # out = xr.Dataset(
-    #     data_vars={
-    #         "mean_cloud_top_phase_liquid0_ice1": (("lat_bin", "lon_bin"), mean_phase),
-    #         "frac_no_cloud": (("lat_bin", "lon_bin"), frac_no_cloud),
-    #         "frac_liquid": (("lat_bin", "lon_bin"), frac_liquid),
-    #         "frac_ice": (("lat_bin", "lon_bin"), frac_ice),
-    #         "frac_mixed": (("lat_bin", "lon_bin"), frac_mixed),
-    #         "n_obs": (("lat_bin", "lon_bin"), n_obs),
-    #         "n_no_cloud": (("lat_bin", "lon_bin"), n_no_cloud),
-    #         "n_liquid": (("lat_bin", "lon_bin"), n_liquid),
-    #         "n_ice": (("lat_bin", "lon_bin"), n_ice),
-    #         "n_mixed": (("lat_bin", "lon_bin"), n_mixed),
-    #         "n_cloudy": (("lat_bin", "lon_bin"), n_cloudy),
-    #     },
-    #     coords={
-    #         "lat_bin": lat_centers.astype(np.float32),
-    #         "lon_bin": lon_centers.astype(np.float32),
-    #         "lat_bin_edge": ("lat_bin_edge", lat_edges.astype(np.float32)),
-    #         "lon_bin_edge": ("lon_bin_edge", lon_edges.astype(np.float32)),
-    #     },
-    # )
+    mean_phase_3d = scatter_2d_to_3d_by_time(mean_phase, rounded_mean_time, time_dim_values, fill_value=cph_fill)
+    mean_height_3d = scatter_2d_to_3d_by_time(mean_height, rounded_mean_time, time_dim_values, fill_value=cth_fill)
+    std_height_3d = scatter_2d_to_3d_by_time(std_height, rounded_mean_time, time_dim_values, fill_value=np.float32(np.nan))
+    frac_no_cloud_3d = scatter_2d_to_3d_by_time(frac_no_cloud, rounded_mean_time, time_dim_values, fill_value=np.float32(np.nan))
+    frac_liquid_3d = scatter_2d_to_3d_by_time(frac_liquid, rounded_mean_time, time_dim_values, fill_value=np.float32(np.nan))
+    frac_ice_3d = scatter_2d_to_3d_by_time(frac_ice, rounded_mean_time, time_dim_values, fill_value=np.float32(np.nan))
+    frac_mixed_3d = scatter_2d_to_3d_by_time(frac_mixed, rounded_mean_time, time_dim_values, fill_value=np.float32(np.nan))
+    n_obs_3d = scatter_2d_to_3d_by_time(n_obs, rounded_mean_time, time_dim_values, fill_value=np.int32(0))
+    n_no_cloud_3d = scatter_2d_to_3d_by_time(n_no_cloud, rounded_mean_time, time_dim_values, fill_value=np.int32(0))
+    n_liquid_3d = scatter_2d_to_3d_by_time(n_liquid, rounded_mean_time, time_dim_values, fill_value=np.int32(0))
+    n_ice_3d = scatter_2d_to_3d_by_time(n_ice, rounded_mean_time, time_dim_values, fill_value=np.int32(0))
+    n_mixed_3d = scatter_2d_to_3d_by_time(n_mixed, rounded_mean_time, time_dim_values, fill_value=np.int32(0))
+    n_cloudy_3d = scatter_2d_to_3d_by_time(n_cloudy, rounded_mean_time, time_dim_values, fill_value=np.int32(0))
+
+    # --- Convert to seconds since epoch for CDO compatibility ---
+    epoch_units = "seconds since 1970-01-01 00:00:00"
+
+    # time_bin coordinate (1D)
+    time_bin_sec = time_dim_values.astype("datetime64[s]").astype(np.int64)
+    # use int32 if range is safe (it is for 2008), otherwise keep int64
+    # time_bin_sec = time_bin_sec.astype(np.int32)
+
+    # rounded_mean_time (2D)
+    rmt = rounded_mean_time.astype("datetime64[s]")
+    rmt_sec = rmt.astype(np.int64)
+    fill = np.int32(-2147483647)  # int32 fill
+    rmt_sec = rmt_sec.astype(np.int32)
+    rmt_sec[np.isnat(rmt)] = fill
+
     out = xr.Dataset(
-    data_vars={
-        "cph_mean": (("time_bin", "lat_bin", "lon_bin"), mean_phase_3d),
-        "cth_mean": (("time_bin", "lat_bin", "lon_bin"), mean_height_3d),
-        "cth_std": (("time_bin", "lat_bin", "lon_bin"), std_height_3d),
-        "frac_no_cloud": (("time_bin", "lat_bin", "lon_bin"), frac_no_cloud_3d),
-        "frac_liquid": (("time_bin", "lat_bin", "lon_bin"), frac_liquid_3d),
-        "frac_ice": (("time_bin", "lat_bin", "lon_bin"), frac_ice_3d),
-        "frac_mixed": (("time_bin", "lat_bin", "lon_bin"), frac_mixed_3d),
-        "n_obs": (("time_bin", "lat_bin", "lon_bin"), n_obs_3d),
-        "n_no_cloud": (("time_bin", "lat_bin", "lon_bin"), n_no_cloud_3d),
-        "n_liquid": (("time_bin", "lat_bin", "lon_bin"), n_liquid_3d),
-        "n_ice": (("time_bin", "lat_bin", "lon_bin"), n_ice_3d),
-        "n_mixed": (("time_bin", "lat_bin", "lon_bin"), n_mixed_3d),
-        "n_cloudy": (("time_bin", "lat_bin", "lon_bin"), n_cloudy_3d),
-
-        # optional: keep per-(lat,lon) assigned rounded time
-        "rounded_mean_time": (("lat_bin", "lon_bin"), rounded_mean_time.astype("datetime64[ns]")),
-    },
-    coords={
-        "time_bin": ("time_bin", time_dim_values.astype("datetime64[ns]")),
-        "lat_bin": lat_centers.astype(np.float32),
-        "lon_bin": lon_centers.astype(np.float32),
-        "lat_bin_edge": ("lat_bin_edge", lat_edges.astype(np.float32)),
-        "lon_bin_edge": ("lon_bin_edge", lon_edges.astype(np.float32)),
-    },
+        data_vars={
+            "cph_mean": (("time_bin", "lat_bin", "lon_bin"), mean_phase_3d),
+            "cth_mean": (("time_bin", "lat_bin", "lon_bin"), mean_height_3d),
+            "cth_std": (("time_bin", "lat_bin", "lon_bin"), std_height_3d),
+            "frac_no_cloud": (("time_bin", "lat_bin", "lon_bin"), frac_no_cloud_3d),
+            "frac_liquid": (("time_bin", "lat_bin", "lon_bin"), frac_liquid_3d),
+            "frac_ice": (("time_bin", "lat_bin", "lon_bin"), frac_ice_3d),
+            "frac_mixed": (("time_bin", "lat_bin", "lon_bin"), frac_mixed_3d),
+            "n_obs": (("time_bin", "lat_bin", "lon_bin"), n_obs_3d),
+            "n_no_cloud": (("time_bin", "lat_bin", "lon_bin"), n_no_cloud_3d),
+            "n_liquid": (("time_bin", "lat_bin", "lon_bin"), n_liquid_3d),
+            "n_ice": (("time_bin", "lat_bin", "lon_bin"), n_ice_3d),
+            "n_mixed": (("time_bin", "lat_bin", "lon_bin"), n_mixed_3d),
+            "n_cloudy": (("time_bin", "lat_bin", "lon_bin"), n_cloudy_3d),
+            "rounded_mean_time": (("lat_bin", "lon_bin"), rmt_sec),
+        },
+        coords={
+            "time_bin": ("time_bin", time_bin_sec),
+            "lat_bin": ("lat_bin", lat_centers.astype(np.float32)),
+            "lon_bin": ("lon_bin", lon_centers.astype(np.float32)),
+            "lat_bin_edge": ("lat_bin_edge", lat_edges.astype(np.float32)),
+            "lon_bin_edge": ("lon_bin_edge", lon_edges.astype(np.float32)),
+        },
     )
 
-    out["cph_mean"].attrs.update(
-        {
-            "long_name": "Mean cloud-top phase score in bin (liquid=0, mixed=0.5, ice=1)",
-            "no_cloud_or_no_cloudy_tops_value": -1.0,
-            "valid_min": -1.0,
-            "valid_max": 1.0,
-        }
-    )
-    out["cth_mean"].attrs.update(
-        {
-            "long_name": "Mean cloud-top height in bin (km)",
-            "no_cloud_or_no_cloudy_tops_value": -1.0,
-        }
-    )
-    out["cth_std"].attrs.update(
-        {
-            "long_name": "Standard deviation of cloud-top height in bin (km)",
-            "no_cloud_or_no_cloudy_tops_value": np.nan,
-        }
-    )
+    # ---------- Coordinate metadata (CF-ish) ----------
+    out["time_bin"].attrs.update({
+    "standard_name": "time",
+    "long_name": "time bin center",
+    "units": epoch_units,
+    "calendar": "standard",
+    })
 
-    out["frac_no_cloud"].attrs["long_name"] = "Fraction of observations in bin classified as no_cloud"
-    out["frac_liquid"].attrs["long_name"] = "Fraction of observations in bin classified as liquid"
-    out["frac_ice"].attrs["long_name"] = "Fraction of observations in bin classified as ice"
-    out["frac_mixed"].attrs["long_name"] = "Fraction of observations in bin classified as mixed"
-    out["lat_bin"].attrs["units"] = "degrees_north"
-    out["lon_bin"].attrs["units"] = "degrees_east"
-    out["lat_bin_edge"].attrs["units"] = "degrees_north"
-    out["lon_bin_edge"].attrs["units"] = "degrees_east"
-    out.attrs["bin_size_degrees"] = float(bin_size_deg)
-    out.attrs["source"] = "Binned from per-profile cloud-top phase classes"
+    out["lat_bin"].attrs.update({
+        "standard_name": "latitude",
+        "long_name": "latitude bin center",
+        "units": "degrees_north",
+        "bounds": "lat_bin_edge",
+    })
+    out["lon_bin"].attrs.update({
+        "standard_name": "longitude",
+        "long_name": "longitude bin center",
+        "units": "degrees_east",
+        "bounds": "lon_bin_edge",
+    })
+    out["lat_bin_edge"].attrs.update({
+        "long_name": "latitude bin edges",
+        "units": "degrees_north",
+    })
+    out["lon_bin_edge"].attrs.update({
+        "long_name": "longitude bin edges",
+        "units": "degrees_east",
+    })
+
+    coord_ref = "time_bin lat_bin lon_bin"
+
+    # ---------- Data variable metadata ----------
+    out["cph_mean"].attrs.update({
+        "long_name": "Mean cloud-top phase score over cloudy tops",
+        "units": "1",
+        "_FillValue": np.float32(cph_fill),
+        "missing_value": np.float32(cph_fill),
+        "valid_min": np.float32(0.0),
+        "valid_max": np.float32(1.0),
+        "flag_values": np.array([-1.0, 0.0, 0.5, 1.0], dtype=np.float32),
+        "flag_meanings": "no_cloudy_tops liquid mixed ice",
+        "coordinates": coord_ref,
+        "comment": "Computed from cloudy samples only: liquid=0, mixed=0.5, ice=1; -1 indicates no cloudy tops in bin.",
+    })
+
+    out["cth_mean"].attrs.update({
+        "long_name": "Mean cloud-top height over cloudy tops",
+        "units": "km",
+        "_FillValue": np.float32(cth_fill),
+        "missing_value": np.float32(cth_fill),
+        "valid_min": np.float32(0.0),
+        "coordinates": coord_ref,
+        "comment": "-1 indicates no cloudy tops in bin.",
+    })
+
+    out["cth_std"].attrs.update({
+        "long_name": "Standard deviation of cloud-top height over cloudy tops",
+        "units": "km",
+        "_FillValue": np.float32(np.nan),
+        "missing_value": np.float32(np.nan),
+        "valid_min": np.float32(0.0),
+        "coordinates": coord_ref,
+        "comment": "NaN indicates undefined (e.g., no cloudy tops).",
+    })
+
+    for v, ln in [
+        ("frac_no_cloud", "Fraction of observations classified as no cloud"),
+        ("frac_liquid", "Fraction of observations classified as liquid"),
+        ("frac_ice", "Fraction of observations classified as ice"),
+        ("frac_mixed", "Fraction of observations classified as mixed"),
+    ]:
+        out[v].attrs.update({
+            "long_name": ln,
+            "units": "1",
+            "_FillValue": np.float32(np.nan),
+            "missing_value": np.float32(np.nan),
+            "valid_min": np.float32(0.0),
+            "valid_max": np.float32(1.0),
+            "coordinates": coord_ref,
+            "comment": "NaN indicates no observations in bin.",
+        })
+
+    for v, ln in [
+        ("n_obs", "Number of observations"),
+        ("n_no_cloud", "Number of no-cloud observations"),
+        ("n_liquid", "Number of liquid observations"),
+        ("n_ice", "Number of ice observations"),
+        ("n_mixed", "Number of mixed-phase observations"),
+        ("n_cloudy", "Number of cloudy observations"),
+    ]:
+        out[v].attrs.update({
+            "long_name": ln,
+            "units": "1",
+            "_FillValue": np.int32(0),
+            "missing_value": np.int32(0),
+            "valid_min": np.int32(0),
+            "coordinates": coord_ref,
+            "comment": "Count variable; 0 means none in bin/time.",
+        })
+
+    out["rounded_mean_time"].attrs.update({
+        "long_name": "Rounded mean cloudy-top observation time at each lat/lon bin",
+        "units": epoch_units,
+        "calendar": "standard",
+        "_FillValue": fill,
+        "comment": f"{fill} indicates no cloudy tops in bin.",
+    })
+
+    for v in out.data_vars:
+        out[v].attrs.pop("coordinates", None)
+
+    # ---------- Global metadata ----------
+    out.attrs.update({
+        "title": "Binned cloud-top phase and cloud-top height statistics",
+        "summary": "Cloud-top phase/height statistics aggregated to regular lat/lon bins and mapped to time bins.",
+        "Conventions": "CF-1.10",
+        "featureType": "grid",
+        "source": "Binned from per-profile cloud-top phase classes derived from DARDAR-MASK simplified categorization",
+        "bin_size_degrees": float(bin_size_deg),
+        "history": "Created by bin_cloud_top_phase4_latlon",
+    })
 
     return out
 
@@ -538,7 +627,6 @@ def _print_summary(out: xr.Dataset) -> None:
 
     unmapped = int(np.sum(np.asarray(out["qa_unmapped_top_code"].values, dtype=bool)))
     print(f"unmapped_top_codes: {unmapped}")
-
 
 def get_single_binned_cloud_top() -> None:
     parser = argparse.ArgumentParser(
@@ -605,14 +693,24 @@ def _process_file(in_path: Path, out_path: Path, bin_size_deg: float, file_ind=1
         # out_binned.to_netcdf(out_path)
         groups = list(out_binned.groupby("time_bin"))
         datasets = [g for _, g in groups]
-        paths = [
-            os_path.join(out_path.parent, f"DD_CT_{np.datetime64(t, 'us').astype(object):%Y%m%d_%H%M}_{file_ind}.nc")
-            for t, _ in groups
-        ]
+        # dt = np.datetime64("1970-01-01T00:00:00", "s") + np.timedelta64(int(t), "s")
+        epoch = np.datetime64("1970-01-01T00:00:00", "s")
+
+        paths = []
+        for t, _ in groups:
+            # t is seconds since epoch (int), rebuild datetime
+            dt64 = epoch + np.timedelta64(int(t), "s")
+            dt_obj = dt64.astype("datetime64[m]").astype(object)  # minute precision for formatting
+            paths.append(os_path.join(out_path.parent, f"DD_CT_{dt_obj:%Y%m%d_%H%M}_{file_ind}.nc"))
+
+        # paths = [
+        #     os_path.join(out_path.parent, f"DD_CT_{np.datetime64(t, 'us').astype(object):%Y%m%d_%H%M}_{file_ind}.nc")
+        #     for t, _ in groups
+        # ]
         xr.save_mfdataset(datasets, paths, mode="w")
 
-    _print_summary(out_profile)
-    print(f"saved: {out_path}")
+    # _print_summary(out_profile)
+    # print(f"saved: {out_path}")
 
 def _process_files_in_parallel(file_pairs: list[tuple[Path, Path]], bin_size_deg: float, n_workers) -> None:
     n_workers = min(cpu_count(), len(file_pairs), n_workers)
@@ -631,6 +729,75 @@ def _process_files_in_parallel(file_pairs: list[tuple[Path, Path]], bin_size_deg
         #     subprocess.run(["cdo","splittime", out_path], check=True)
 
 
+def merge_ddct_suffix_files_in_dir(day_dir: Path, workers: int = 8) -> None:
+    """
+    Merge/rename DD_CT files in one folder.
+
+    Input files:
+      DD_CT_YYYYMMDD_HHMM_<n>.nc
+    Output files:
+      DD_CT_YYYYMMDD_HHMM.nc
+    """
+    pattern = re.compile(r"^(DD_CT_\d{8}_\d{4})_(\d+)\.nc$")
+
+    # 1) Collect groups by timestamp key
+    groups: dict[str, list[Path]] = {}
+    for f in day_dir.glob("DD_CT_*_*.nc"):
+        m = pattern.match(f.name)
+        if not m:
+            continue
+        key = m.group(1)
+        groups.setdefault(key, []).append(f)
+
+    if not groups:
+        print(f"[merge-ddct] no DD_CT_*_<n>.nc files in {day_dir}")
+        return
+
+    # 2) Worker for one timestamp key
+    def process_key(key: str) -> None:
+        files = sorted(groups[key])
+        out = day_dir / f"{key}.nc"
+        tmp = day_dir / f"{key}.tmp.nc"
+
+        try:
+            if len(files) == 1:
+                # No duplicate: just move to suffixless name
+                files[0].replace(out)
+                print(f"[rename ] {files[0].name} -> {out.name}")
+                return
+
+            # Duplicates: ensmean
+            if tmp.exists():
+                tmp.unlink()
+
+            cmd = ["cdo", "-L", "ensmean"] + [str(f) for f in files] + [str(tmp)]
+            res = subprocess.run(cmd, capture_output=True, text=True)
+            if res.returncode != 0:
+                raise RuntimeError(res.stderr.strip() or "cdo ensmean failed")
+
+            tmp.replace(out)  # atomic rename in same folder
+
+            # Remove old indexed files
+            for f in files:
+                if f.exists():
+                    f.unlink()
+
+            # print(f"[merge] {len(files)} files -> {out.name}")
+
+        except Exception as e:
+            if tmp.exists():
+                tmp.unlink(missing_ok=True)
+            print(f"[ERROR] {key}: {e}")
+
+    # 3) Run keys in parallel
+    keys = sorted(groups.keys())
+    n_workers = max(1, min(workers, len(keys)))
+    with ThreadPoolExecutor(max_workers=n_workers) as pool:
+        list(pool.map(process_key, keys))
+
+    print(f"[merge-ddct] done: {day_dir}")
+
+
 def process_one_day(input_dir: Path,output_dir: Path, bin_size_deg=0.05, n_workers = 4) -> None:
     # Example usage for processing one day of files in parallel.
     output_dir.mkdir(parents=True, exist_ok=True)  # assuming input_dir is like "2024-01-01"
@@ -643,7 +810,10 @@ def process_one_day(input_dir: Path,output_dir: Path, bin_size_deg=0.05, n_worke
     _process_files_in_parallel(file_pairs, bin_size_deg=bin_size_deg , n_workers=n_workers)
     # for file_pair in file_pairs:
     #     print(f"Processed: {file_pair[0]} -> {file_pair[1]}")
-    #     subprocess.run(["cdo", "splittime",file_pairs[2] ], check=True)
+    #     subprocess.run(["bash","/wolke_scratch/dnikolo/MSGI/DARDAR_analysis/merge_problematic.sh",""])
+
+    # Merge DD_CT_*_<n>.nc -> DD_CT_*.nc once per day
+    merge_ddct_suffix_files_in_dir(output_dir, workers=8)
 
 
 def process_multiple_days(base_input_dir: Path, base_output_dir: Path, start_date: str, end_date: str,n_workers=4, bin_size_deg=0.05) -> None:
@@ -668,10 +838,10 @@ def process_multiple_days(base_input_dir: Path, base_output_dir: Path, start_dat
 if __name__ == "__main__":
     # get_single_binned_cloud_top()
     process_multiple_days(
-        base_input_dir=Path("/wolke_scratch/dnikolo/MSGI/DARDAR_analysis"),
-        base_output_dir=Path("/wolke_scratch/dnikolo/MSGI/DARDAR_analysis/daily_output"),
-        start_date="20080503",
-        end_date="20080503",
+        base_input_dir=Path("/wolke_scratch/dnikolo/MSGI/DARDAR_analysis/DARDAR-MASK"),
+        base_output_dir=Path("/wolke_scratch/dnikolo/MSGI/DARDAR_analysis/CPH_data"),
+        start_date="20080510",
+        end_date="20080510",
         bin_size_deg=0.3,
         n_workers=8
     )
