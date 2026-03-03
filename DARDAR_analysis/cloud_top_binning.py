@@ -50,7 +50,6 @@ def _detect_height_orientation(height_values: np.ndarray) -> bool:
 
     return np.nanmedian(dh) > 0.0
 
-
 def _height_to_km(height_values: np.ndarray, units: str | None) -> np.ndarray:
     """
     Convert CS_TRACK_Height to km using units when available, else a heuristic.
@@ -68,7 +67,6 @@ def _height_to_km(height_values: np.ndarray, units: str | None) -> np.ndarray:
     if np.isfinite(med_abs) and med_abs > 200.0:
         return h / 1000.0
     return h
-
 
 def extract_cloud_top_phase4(ds: xr.Dataset, file_ind: int = 1) -> xr.Dataset:
     """
@@ -145,6 +143,7 @@ def extract_cloud_top_phase4(ds: xr.Dataset, file_ind: int = 1) -> xr.Dataset:
     # Extract top-bin code and height.
     cloud_top_code = np.full(n_time, -99, dtype=np.int16)
     cloud_top_height_km = np.full(n_time, np.nan, dtype=np.float32)
+    # cloud_top_temp = np.full(n_time, np.nan, dtype=np.float32)
 
     rows = np.where(has_candidate)[0]
     cols = top_idx[has_candidate]
@@ -203,7 +202,7 @@ def extract_cloud_top_phase4(ds: xr.Dataset, file_ind: int = 1) -> xr.Dataset:
     out["cloud_top_height_km"].attrs.update({"long_name": "Cloud-top height", "units": "km"})
     out.attrs["source"] = "Derived from DARDAR-MASK simplified categorization"
     out.attrs["height_index_increasing"] = str(bool(increasing_with_index))
-    out.to_netcdf(f"/wolke_scratch/dnikolo/MSGI/DARDAR_analysis/debug/cloud_top_observations_{file_ind}.nc")  # for debugging
+    # out.to_netcdf(f"/wolke_scratch/dnikolo/MSGI/DARDAR_analysis/debug/cloud_top_observations_{file_ind}.nc")  # for debugging
     return out
 
 def round_ns_timestamps(ts: np.ndarray, dt_min = 15) -> np.ndarray:
@@ -287,8 +286,6 @@ def scatter_2d_to_3d_by_time(var2d, rounded_time2d, time_values, fill_value=np.n
         cube[tidx[in_range], lat_i[in_range], lon_i[in_range]] = var2d[lat_i[in_range], lon_i[in_range]]
 
     return cube
-
-
 
 def bin_cloud_top_phase4_latlon(
     profile_ds: xr.Dataset, bin_size_deg: float = 0.05
@@ -609,7 +606,6 @@ def bin_cloud_top_phase4_latlon(
 
     return out
 
-
 def _print_summary(out: xr.Dataset) -> None:
     phase = np.asarray(out["cloud_top_phase_4class"].values, dtype=np.int8)
     total = phase.size
@@ -730,7 +726,6 @@ def _process_files_in_parallel(file_pairs: list[tuple[Path, Path]], bin_size_deg
         # for _, out_path in file_pairs:
         #     subprocess.run(["cdo","splittime", out_path], check=True)
 
-
 def merge_ddct_suffix_files_in_dir(day_dir: Path, workers: int = 8) -> None:
     """
     Merge/rename DD_CT files in one folder.
@@ -800,6 +795,81 @@ def merge_ddct_suffix_files_in_dir(day_dir: Path, workers: int = 8) -> None:
     print(f"[merge-ddct] done: {day_dir}")
 
 
+
+def move_wrong_day_files(day_dir: Path, base_path: Path, workers: int = 8) -> None:
+    """
+    Move DD_CT files from `day_dir` into the correct YYYY/MM/DD folder from the filename date.
+    Only merge (cdo ensmean) if a file with the same suffixless name already exists in the destination.
+    """
+    rx = re.compile(r"^(DD_CT_(\d{8})_\d{4})(?:_(\d+))?\.nc$")  # key, yyyymmdd, optional index
+    groups: dict[str, list[Path]] = {}
+
+    for f in day_dir.glob("DD_CT_*.nc"):
+        m = rx.match(f.name)
+        if m:
+            groups.setdefault(m.group(1), []).append(f)
+
+    if not groups:
+        print(f"[move-wrong-day] no DD_CT_*.nc in {day_dir}")
+        return
+
+    def dst_for(key: str, yyyymmdd: str) -> Path:
+        d = datetime.strptime(yyyymmdd, "%Y%m%d")
+        return base_path / f"{d:%Y}" / f"{d:%m}" / f"{d:%d}" / f"{key}.nc"
+
+    def cdo_ensmean(inputs: list[Path], out: Path) -> None:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        tmp = out.with_suffix(".tmp.nc")
+        tmp.unlink(missing_ok=True)
+        res = subprocess.run(
+            ["cdo", "-L", "ensmean", *map(str, inputs), str(tmp)],
+            capture_output=True, text=True
+        )
+        if res.returncode:
+            tmp.unlink(missing_ok=True)
+            raise RuntimeError(res.stderr.strip() or "cdo ensmean failed")
+        tmp.replace(out)
+
+    def process(key: str) -> None:
+        srcs = sorted(groups[key])
+        m = rx.match(srcs[0].name)
+        yyyymmdd = m.group(2)
+        dst = dst_for(key, yyyymmdd)
+
+        # If it's already in the correct place, skip
+        if any(s.resolve() == dst.resolve() for s in srcs):
+            return
+
+        try:
+            if dst.exists():
+                # Only case where we merge: same name exists in destination
+                cdo_ensmean([dst] + srcs, dst)
+                for s in srcs:
+                    s.unlink(missing_ok=True)
+                print(f"[merge-from-move] {len(srcs)+1} -> {dst.name} (collision)")
+                return
+
+            # No collision: do NOT merge.
+            dst.parent.mkdir(parents=True, exist_ok=True)
+
+            # Prefer moving a suffixless file if present; otherwise move the first and delete the rest.
+            preferred = next((s for s in srcs if s.name == f"{key}.nc"), srcs[0])
+            preferred.replace(dst)
+            for s in srcs:
+                if s != preferred:
+                    s.unlink(missing_ok=True)
+            print(f"[move  ] {preferred.name} -> {dst}")
+
+        except Exception as e:
+            print(f"[ERROR] {key}: {e}")
+
+    keys = sorted(groups)
+    with ThreadPoolExecutor(max_workers=max(1, min(workers, len(keys)))) as pool:
+        list(pool.map(process, keys))
+
+    print(f"[move-wrong-day] done: {day_dir}")
+
+
 def process_one_day(input_dir: Path,output_dir: Path, bin_size_deg=0.05, n_workers = 4) -> None:
     # Example usage for processing one day of files in parallel.
     output_dir.mkdir(parents=True, exist_ok=True)  # assuming input_dir is like "2024-01-01"
@@ -816,7 +886,7 @@ def process_one_day(input_dir: Path,output_dir: Path, bin_size_deg=0.05, n_worke
 
     # Merge DD_CT_*_<n>.nc -> DD_CT_*.nc once per day
     merge_ddct_suffix_files_in_dir(output_dir, workers=8)
-
+    move_wrong_day_files(output_dir, base_path=output_dir.parent.parent.parent, workers=8)  # move to correct day folders if needed
 
 def process_multiple_days(base_input_dir: Path, base_output_dir: Path, start_date: str, end_date: str,n_workers=4, bin_size_deg=0.05) -> None:
     # Example usage for processing multiple days in parallel.
@@ -842,8 +912,8 @@ if __name__ == "__main__":
     process_multiple_days(
         base_input_dir=Path("/wolke_scratch/dnikolo/MSGI/DARDAR_analysis/DARDAR-MASK"),
         base_output_dir=Path("/wolke_scratch/dnikolo/MSGI/DARDAR_analysis/CPH_data"),
-        start_date="20080502",
-        end_date="20080510",
+        start_date="20070601",
+        end_date="20071231",
         bin_size_deg=0.3,
         n_workers=8
     )
