@@ -1,0 +1,19 @@
+[project]
+name = "msgi" # distribution name on PyPI
+version = "0.1.0"
+authors = [{name = "Dragomir Nikolov", email = "dnikolo@ethz.ch"}]
+description = "Compare representation of glaciation events between satellite observations and model simulations"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["numpy", "scipy", "xarray", "pandas", "dask", "matplotlib", "cartopy"]
+
+[project.urls]
+Homepage = "https://github.com/DragomirNikolov/MSGIr"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"model_data" = "model", "obs_data" = "obs"}
+packages = ["model_data","obs_data"]
