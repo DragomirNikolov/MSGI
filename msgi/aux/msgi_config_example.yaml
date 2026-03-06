@@ -1,6 +1,6 @@
 resample_input_dir: "/wolke_scratch/dnikolo/ICON_Data/Nudged_run_cph_03_03"
 resample_output_dir: "/wolke_scratch/dnikolo/ICON_Data/Nudged_run_cph_03_03/resample_test"
-preprocessing_output_dir: /wolke_scratch/dnikolo/ICON_Data/Nudged_run_cph_03_03
+preprocessing_output_dir: /wolke_scratch/dnikolo/ICON_Data/Nudged_run_cph_05_03
 experiment_name: "ryan_nudged_test_v0203"
 
 # CDO Settings and helper files

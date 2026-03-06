@@ -135,7 +135,7 @@ def split_dir_files(gte_config, msgi_config):
         data = lat_lon_filter(data)
 
         # Load variables
-        CPH = data["ctp"]
+        CPH = data["cph"]
         CTT = data["ctt"]
 
         # Extra variables for the mixed-range files
