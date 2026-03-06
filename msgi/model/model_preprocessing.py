@@ -109,7 +109,7 @@ def split_dir_files(gte_config, msgi_config):
     
 
     folder_path = msgi_config["resample_output_dir"]
-    base_dir = msgi_config.get(["preprocessing_output_dir"],None)
+    base_dir = msgi_config.get("preprocessing_output_dir",None)
     if base_dir is None:
         base_dir=gte_config["CLAAS_fp"]
         print(f"preprocessing_output_dir is not included in msgi_config. Fallback to gte_config[CLAAS_fp]={base_dir}")
@@ -293,7 +293,7 @@ def preprocess_dir(gte_config,msgi_config):
 
 if __name__=="__main__":
 
-    # gte_config = read_gte_config()
-    gte_config = None
+    gte_config = read_gte_config()
+    # gte_config = None
     msgi_config = read_msgi_config()
     preprocess_dir(gte_config, msgi_config)

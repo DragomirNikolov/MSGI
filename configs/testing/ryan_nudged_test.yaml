@@ -1,0 +1,15 @@
+resample_input_dir: "/nfs/ch4/wolke_scratch/dnikolo/ICON_Data/Nudged_run_cph_03_03"
+resample_output_dir: "/nfs/ch4/wolke_scratch/dnikolo/ICON_Data/Nudged_run_cph_03_03/resample_test"
+# preprocessing_output_dir: /nfs/ch4/wolke_scratch/dnikolo/ICON_Data/Nudged_run_cph_03_03
+experiment_name: "ryan_nudged_test_v0203"
+
+# CDO Settings and helper files
+cdo_aux_dir: "/nfs/ch4/wolke_scratch/dnikolo/ICON_Data/aux_tools"
+cdo_grid_file: "/nfs/ch4/wolke_scratch/dnikolo/ICON_Data/aux_tools/grid_1.5x1.5.txt"
+cdo_threads: 8
+
+remap_methods: ["laf"]
+twc_threshold: 1.0e-5
+mixed_vars:
+  - ctt
+

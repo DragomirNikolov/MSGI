@@ -6,7 +6,7 @@ import yaml
 
 
 REQUIRED_KEYS = {
-    "preprocessing_output_dir",
+    "resample_input_dir",
     "twc_threshold",
     "mixed_vars",
 }
@@ -39,9 +39,9 @@ def _validate_config(config: dict[str, Any]) -> dict[str, Any]:
         missing_str = ", ".join(sorted(missing))
         raise KeyError(f"Missing required MSGI config key(s): {missing_str}")
 
-    preprocessing_output_dir = config["preprocessing_output_dir"]
-    if not isinstance(preprocessing_output_dir, str) or not preprocessing_output_dir.strip():
-        raise ValueError("'preprocessing_output_dir' must be a non-empty string.")
+    resample_input_dir = config["resample_input_dir"]
+    if not isinstance(resample_input_dir, str) or not resample_input_dir.strip():
+        raise ValueError("'resample_input_dir' must be a non-empty string.")
 
     twc_threshold = config["twc_threshold"]
     if not isinstance(twc_threshold, (int, float)):
@@ -55,6 +55,7 @@ def _validate_config(config: dict[str, Any]) -> dict[str, Any]:
 
     optional_string_keys = [
         "experiment_name",
+        "preprocessing_output_dir",
         "resample_input_dir",
         "resample_output_dir",
         "cdo_aux_dir",
