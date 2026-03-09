@@ -204,7 +204,7 @@ def split_dir_files(gte_config, msgi_config):
 
         for var_name, var_da in zip(mixed_var_names, mixed_output):
             # optional: rename to indicate filtering
-            out_name = f"{var_name}_filtered"
+            out_name = f"{var_name}_resampled"
 
             mixed_ds[out_name] = convert_time_coord(var_da).rename(out_name)
 

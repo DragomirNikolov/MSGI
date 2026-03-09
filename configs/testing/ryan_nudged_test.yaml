@@ -1,5 +1,5 @@
-resample_input_dir: "/nfs/ch4/wolke_scratch/dnikolo/ICON_Data/Nudged_run_cph_03_03"
-resample_output_dir: "/nfs/ch4/wolke_scratch/dnikolo/ICON_Data/Nudged_run_cph_03_03/resample_test"
+resample_input_dir: "/nfs/ch4/wolke_scratch/dnikolo/ICON_Data/Nudged_run_cph_05_03"
+resample_output_dir: "/nfs/ch4/wolke_scratch/dnikolo/ICON_Data/Nudged_run_cph_05_03/resample_test"
 # preprocessing_output_dir: /nfs/ch4/wolke_scratch/dnikolo/ICON_Data/Nudged_run_cph_03_03
 experiment_name: "ryan_nudged_test_v0203"
 
@@ -12,4 +12,5 @@ remap_methods: ["laf"]
 twc_threshold: 1.0e-5
 mixed_vars:
   - ctt
+  - ctp
 
