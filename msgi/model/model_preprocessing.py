@@ -161,6 +161,12 @@ def split_dir_files(gte_config, msgi_config):
         if "twc" in data.data_vars:
             mixed_mask = mixed_mask & (data["twc"] >= twc_threshold)
         mixed_results = [var.where(mixed_mask, other=0) for var in mixed_vars]
+        # If yiu want celcius
+        # for i in range(len(mixed_vars)):
+        #     if (mixed_var_names[i]).lower() != "ctt":
+        #         mixed_results.append(mixed_vars[i].where(mixed_mask, other=0))
+        #     else:
+        #         mixed_results.append(mixed_vars[i].where(mixed_mask-273.15, other=np.nan))
 
         with ProgressBar(dt=15.0):
              CPH_output, mixed_output = dask.compute(
