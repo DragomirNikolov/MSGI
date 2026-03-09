@@ -110,6 +110,9 @@ def split_dir_files(gte_config, msgi_config):
 
     folder_path = msgi_config["resample_output_dir"]
     base_dir = msgi_config.get("preprocessing_output_dir",None)
+    grid_type = msgi_config.get("grid_type","")
+    poles = msgi_config.get("poles", ["np","sp"])
+    experiment_name = msgi_config["experiment_name"]
     if base_dir is None:
         base_dir=gte_config["CLAAS_fp"]
         print(f"preprocessing_output_dir is not included in msgi_config. Fallback to gte_config[CLAAS_fp]={base_dir}")
@@ -124,13 +127,22 @@ def split_dir_files(gte_config, msgi_config):
     # Mixed temperature bounds across all ranges
     T_min_mixed = min(x for t in T_ranges for x in t)
     T_max_mixed = max(x for t in T_ranges for x in t)
-
     for file in os.listdir(folder_path):
-        if file.startswith("remap_laf_whole_ryan_nudged_test"):
-            file_path = os.path.join(folder_path, file)
+        if grid_type=="latlon":
+            if file.startswith(f"remap_laf_whole_{experiment_name}"):
+                file_path = os.path.join(folder_path, file)
+            else:
+                continue
+        elif grid_type=="geostationary":
+            file_path=None
+            for pole in poles:
+                if file.startswith(f"remap_laf_{pole}_{experiment_name}"):
+                    current_pole=pole
+                    file_path = os.path.join(folder_path, file)
+            else:
+                continue
         else:
-            continue
-
+            raise ValueError("")
         data = xr.open_dataset(file_path, chunks={"time": 1})
         data = lat_lon_filter(data)
 
@@ -192,7 +204,10 @@ def split_dir_files(gte_config, msgi_config):
             paths = []
             for dt in times:
                 ts = pd.Timestamp(dt)
-                subdir = ts.strftime("%Y/%m/%d")
+                if grid_type=="latlon":
+                    subdir = ts.strftime(f"%Y/%m/%d")
+                elif grid_type=="geostationary":
+                    subdir = ts.strftime(f"{current_pole}/%Y/%m/%d")
                 filename = (
                     f"R_Agg_30_T_{(273 - T_ranges[i][0]):02}_{(273 - T_ranges[i][1]):02}_"
                     f"{ts.strftime('%Y%m%d%H%M%S')}.nc"
@@ -232,10 +247,16 @@ def resample_dir_files(gte_config,msgi_config):
     input_dir = msgi_config["resample_input_dir"]
     output_dir = msgi_config["resample_output_dir"]
     experiment_name = msgi_config.get("experiment_name", "")
-
+    grid_type = msgi_config.get("grid_type","")
     aux_dir = msgi_config.get("cdo_aux_dir", "/wolke_scratch/dnikolo/ICON_Data/aux_tools")
-    grid_file = msgi_config.get("cdo_grid_file", os.path.join(aux_dir, "grid_1.5x1.5.txt"))
-
+    poles = msgi_config.get("poles", ["np","sp"])
+    if grid_type=="latlon":
+        grid_file = msgi_config.get("cdo_grid_file", os.path.join(aux_dir, "grid_1.5x1.5.txt"))
+    elif grid_type=="geostationary":
+        grid_files = msgi_config.get("cdo_grid_file", {"np":os.path.join(aux_dir, "grid_CLAAS_Agg_3_np.txt"),"sp":os.path.join(aux_dir, "grid_CLAAS_Agg_3_sp.txt") })
+    else:
+        raise ValueError("grid_type not supported or not specified in msgi auxiliary file")
+    
     remap_methods = msgi_config.get("resampling_methods", ["laf", "dis"])
     remap_methods = [m for m in remap_methods if m in {"laf", "dis"}]
     if not remap_methods:
@@ -257,16 +278,27 @@ def resample_dir_files(gte_config,msgi_config):
     tasks = []
     for in_file in input_files:
         base = os.path.basename(in_file)
-        for method in remap_methods:
-            weights_file = msgi_config.get(
-                f"{method}_weights_file",
-                os.path.join(aux_dir, f"{method}_2d_1.5x1.5_weights.nc"),
-            )
-            out_file = os.path.join(output_dir, f"remap_{method}_whole_{base}")
-            tasks.append((in_file, out_file, weights_file, method))
-
+        if grid_type=="latlon":
+            for method in remap_methods:
+                weights_file = msgi_config.get(
+                    f"{method}_weights_file",
+                    os.path.join(aux_dir, f"{method}_2d_1.5x1.5_weights.nc"),
+                )
+                out_file = os.path.join(output_dir, f"remap_{method}_whole_{base}")
+                tasks.append((in_file, out_file, weights_file,grid_file, method))
+        elif grid_type=="geostationary":
+            for method in remap_methods:
+                weights_files = msgi_config.get(
+                        f"{method}_weights_file",
+                        {"np": os.path.join(aux_dir, f"CLAAS_{method}_weights_np.nc"),
+                        "sp": os.path.join(aux_dir, f"CLAAS_{method}_weights_sp.nc")})
+                for pole in poles:
+                    weights_file = weights_files[pole]
+                    grid_file=grid_file[pole]
+                    out_file = os.path.join(output_dir, f"remap_{method}_{pole}_{base}")
+                    tasks.append((in_file, out_file, weights_file,grid_file, method))
     def _run_one(task):
-        in_file, out_file, weights_file, method = task
+        in_file, out_file, weights_file,grid_file, method = task
         cmd = [
             "cdo",
             "-P",
