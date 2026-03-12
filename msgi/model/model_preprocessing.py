@@ -116,13 +116,18 @@ def split_dir_files(gte_config, msgi_config):
     if base_dir is None:
         base_dir=gte_config["CLAAS_fp"]
         print(f"preprocessing_output_dir is not included in msgi_config. Fallback to gte_config[CLAAS_fp]={base_dir}")
-    filtered_base_dir = os.path.join(base_dir, "Filtered_Data","np")
-    resampled_base_dir = os.path.join(base_dir, "Resampled_Data","np")
+    if grid_type=="latlon":
+        filtered_base_dir = os.path.join(base_dir, "Filtered_Data","np")
+        resampled_base_dir = os.path.join(base_dir, "Resampled_Data","np")
+    if grid_type=="geostationary":
+        filtered_base_dir = os.path.join(base_dir, "Filtered_Data")
+        resampled_base_dir = os.path.join(base_dir, "Resampled_Data")
 
     # ---- variables you want in the mixed-range output ----
     # Replace these with the actual variable names from your dataset
     mixed_var_names = msgi_config["mixed_vars"]
     twc_threshold = msgi_config["twc_threshold"]
+    tag = f"Agg_{gte_config["agg_fact"]}"
 
     # Mixed temperature bounds across all ranges
     T_min_mixed = min(x for t in T_ranges for x in t)
@@ -139,12 +144,13 @@ def split_dir_files(gte_config, msgi_config):
                 if file.startswith(f"remap_laf_{pole}_{experiment_name}"):
                     current_pole=pole
                     file_path = os.path.join(folder_path, file)
-            else:
+            if file_path is None:
                 continue
         else:
             raise ValueError("")
         data = xr.open_dataset(file_path, chunks={"time": 1})
-        data = lat_lon_filter(data)
+        if grid_type=="latlon":
+            data = lat_lon_filter(data)
 
         # Load variables
         CPH = data["cph"]
@@ -202,16 +208,21 @@ def split_dir_files(gte_config, msgi_config):
             times, new_data_list = prepare_split_datasets(cph_ds)
 
             paths = []
+            
             for dt in times:
                 ts = pd.Timestamp(dt)
                 if grid_type=="latlon":
                     subdir = ts.strftime(f"%Y/%m/%d")
+                    filename = (
+                    f"R_{tag}_T_{(273 - T_ranges[i][0]):02}_{(273 - T_ranges[i][1]):02}_"
+                    f"{ts.strftime('%Y%m%d%H%M%S')}.nc"
+                    )
                 elif grid_type=="geostationary":
                     subdir = ts.strftime(f"{current_pole}/%Y/%m/%d")
-                filename = (
-                    f"R_Agg_30_T_{(273 - T_ranges[i][0]):02}_{(273 - T_ranges[i][1]):02}_"
+                    filename = (
+                    f"{tag}_T_{(273 - T_ranges[i][0]):02}_{(273 - T_ranges[i][1]):02}_"
                     f"{ts.strftime('%Y%m%d%H%M%S')}.nc"
-                )
+                    )
                 full_path = os.path.join(filtered_base_dir, subdir, filename)
                 os.makedirs(os.path.dirname(full_path), exist_ok=True)
                 paths.append(full_path)
@@ -234,8 +245,12 @@ def split_dir_files(gte_config, msgi_config):
         paths = []
         for dt in times:
             ts = pd.Timestamp(dt)
-            subdir = ts.strftime("%Y/%m/%d")
-            filename = f"R_Agg_30_{ts.strftime('%Y%m%d%H%M%S')}.nc"
+            if grid_type=="latlon":
+                subdir = ts.strftime(f"%Y/%m/%d")
+                filename = f"R_{tag}_{ts.strftime('%Y%m%d%H%M%S')}.nc"
+            elif grid_type=="geostationary":
+                subdir = ts.strftime(f"{pole}/%Y/%m/%d")
+                filename = f"{tag}_{ts.strftime('%Y%m%d%H%M%S')}.nc"
             full_path = os.path.join(resampled_base_dir, subdir, filename)
             os.makedirs(os.path.dirname(full_path), exist_ok=True)
             paths.append(full_path)
@@ -294,23 +309,36 @@ def resample_dir_files(gte_config,msgi_config):
                         "sp": os.path.join(aux_dir, f"CLAAS_{method}_weights_sp.nc")})
                 for pole in poles:
                     weights_file = weights_files[pole]
-                    grid_file=grid_file[pole]
+                    grid_file=grid_files[pole]
                     out_file = os.path.join(output_dir, f"remap_{method}_{pole}_{base}")
                     tasks.append((in_file, out_file, weights_file,grid_file, method))
-    def _run_one(task):
-        in_file, out_file, weights_file,grid_file, method = task
-        cmd = [
-            "cdo",
-            "-P",
-            str(cdo_threads),
-            f"remap,{grid_file},{weights_file}",
-            "-setctomiss,0",
-            in_file,
-            out_file,
-        ]
-        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
-        return method, out_file
-
+    if grid_type=="latlon":
+        def _run_one(task):
+            in_file, out_file, weights_file,grid_file, method = task
+            cmd = [
+                "cdo",
+                "-P",
+                str(cdo_threads),f"-remap,{grid_file},{weights_file}",
+                # "-setctomiss,0",
+                in_file,
+                out_file,
+            ]
+            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+            return method, out_file
+    elif grid_type=="geostationary":
+        def _run_one(task):
+            in_file, out_file, weights_file,grid_file, method = task
+            cmd = [
+                "cdo",
+                "-P",
+                str(cdo_threads),
+                f"-setgrid,/nfs/ch4/wolke_scratch/dnikolo/Glaciation_time_estimator/grids/grid_np_agg.txt",f"-remap,{grid_file},{weights_file}",
+                # "-setctomiss,0",
+                in_file,
+                out_file,
+            ]
+            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+            return method, out_file
     max_workers = max(1, min(workers, len(tasks)))
     failures = []
     with ThreadPoolExecutor(max_workers=max_workers) as pool:

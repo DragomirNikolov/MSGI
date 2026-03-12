@@ -9,6 +9,7 @@ REQUIRED_KEYS = {
     "resample_input_dir",
     "twc_threshold",
     "mixed_vars",
+    "grid_type"
 }
 
 VALID_RESAMPLING_METHODS = {"laf", "dis"}
@@ -52,6 +53,11 @@ def _validate_config(config: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("'mixed_vars' must be a non-empty list of variable names.")
     if not all(isinstance(v, str) and v.strip() for v in mixed_vars):
         raise ValueError("All entries in 'mixed_vars' must be non-empty strings.")
+    
+    grid_type = config["grid_type"]
+    allowed_types = ("latlon","geostationary")
+    if not (grid_type in allowed_types) or not mixed_vars:
+        raise ValueError(f"'grid_type' must be one of the following {allowed_types}")
 
     optional_string_keys = [
         "experiment_name",
@@ -59,10 +65,11 @@ def _validate_config(config: dict[str, Any]) -> dict[str, Any]:
         "resample_input_dir",
         "resample_output_dir",
         "cdo_aux_dir",
-        "cdo_grid_file",
         "laf_weights_file",
         "dis_weights_file",
     ]
+    if grid_type!="geostationary":
+        optional_string_keys.extend("cdo_grid_file")
     for key in optional_string_keys:
         if key in config:
             value = config[key]
