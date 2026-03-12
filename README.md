@@ -1,2 +1,2 @@
 # MSGI
-MSGI (Model satellite glaciation intercomparisson) is project used to compare the properties of cloud glaciation between climate models and satellite data
+MSGI (Model satellite glaciation intercomparisson) is a project comparing cloud glaciation observed from satellites to those occuring in climate models.
