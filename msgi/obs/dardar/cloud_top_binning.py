@@ -910,8 +910,8 @@ def process_multiple_days(base_input_dir: Path, base_output_dir: Path, start_dat
 if __name__ == "__main__":
     # get_single_binned_cloud_top()
     process_multiple_days(
-        base_input_dir=Path("/wolke_scratch/dnikolo/MSGI/DARDAR_analysis/DARDAR-MASK"),
-        base_output_dir=Path("/wolke_scratch/dnikolo/MSGI/DARDAR_analysis/CPH_data"),
+        base_input_dir=Path("/wolke_scratch/dnikolo/DARDAR_data/DARDAR-MASK"),
+        base_output_dir=Path("/wolke_scratch/dnikolo/DARDAR_data/CPH_data"),
         start_date="20071001",
         end_date="20071231",
         bin_size_deg=0.3,
