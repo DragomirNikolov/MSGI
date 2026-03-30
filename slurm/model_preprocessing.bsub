@@ -11,7 +11,6 @@
 set -e
 
 date
-
 print_usage() {
     printf "Usage: ..."
 }
@@ -50,4 +49,6 @@ if [ $? -ne 0 ]; then
     echo "Python script failed, exiting."
     exit 1
 fi
+
+
 date

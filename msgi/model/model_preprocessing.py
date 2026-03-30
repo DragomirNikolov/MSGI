@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 import dask
+import re
 from dask.diagnostics import ProgressBar
 from datetime import datetime, timedelta
 from glaciation_time_estimator.auxiliary_func.config_reader import read_config as read_gte_config
@@ -127,7 +128,7 @@ def split_dir_files(gte_config, msgi_config):
     # Replace these with the actual variable names from your dataset
     mixed_var_names = msgi_config["mixed_vars"]
     twc_threshold = msgi_config["twc_threshold"]
-    tag = f"Agg_{gte_config["agg_fact"]}"
+    tag = f"Agg_{gte_config['agg_fact']:02}"
 
     # Mixed temperature bounds across all ranges
     T_min_mixed = min(x for t in T_ranges for x in t)
@@ -249,7 +250,7 @@ def split_dir_files(gte_config, msgi_config):
                 subdir = ts.strftime(f"%Y/%m/%d")
                 filename = f"R_{tag}_{ts.strftime('%Y%m%d%H%M%S')}.nc"
             elif grid_type=="geostationary":
-                subdir = ts.strftime(f"{pole}/%Y/%m/%d")
+                subdir = ts.strftime(f"{current_pole}/%Y/%m/%d")
                 filename = f"{tag}_{ts.strftime('%Y%m%d%H%M%S')}.nc"
             full_path = os.path.join(resampled_base_dir, subdir, filename)
             os.makedirs(os.path.dirname(full_path), exist_ok=True)
@@ -282,10 +283,44 @@ def resample_dir_files(gte_config,msgi_config):
 
     input_files = sorted(glob.glob(os.path.join(input_dir, "*_ctp_2d*")))
     if experiment_name:
-        input_files = [f for f in input_files if os.path.basename(f).startswith(experiment_name)]
+        input_files = [
+            f for f in input_files
+            if os.path.basename(f).startswith(experiment_name) and f.endswith(".nc")
+        ]
+
+    def extract_file_date(filepath):
+        """Extract datetime from filename."""
+        basename = os.path.basename(filepath)
+        match = re.search(r"(\d{8}T\d{6}Z)", basename)
+        if not match:
+            return None
+        return datetime.strptime(match.group(1), "%Y%m%dT%H%M%SZ")
+
+    start_date = gte_config["start_time"].replace(hour=0, minute=0, second=0, microsecond=0)
+    end_date = gte_config["end_time"].replace(hour=0, minute=0, second=0, microsecond=0)
+
+    if start_date or end_date:
+        filtered_files = []
+        for f in input_files:
+            file_dt = extract_file_date(f)
+            if file_dt is None:
+                continue
+
+            if start_date and file_dt < start_date:
+                continue
+            if end_date and file_dt > end_date:
+                continue
+
+            filtered_files.append(f)
+
+        input_files = filtered_files
 
     if not input_files:
-        print(f"No CTP 2D files found in {input_dir} for experiment prefix '{experiment_name}'.")
+        print(
+            f"No CTP 2D files found in {input_dir} "
+            f"for experiment prefix '{experiment_name}' "
+            f"within date range {start_date_str} to {end_date_str}."
+        )
         return
 
     os.makedirs(output_dir, exist_ok=True)
