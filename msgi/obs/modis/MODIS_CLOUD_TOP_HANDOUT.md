@@ -36,6 +36,7 @@ From MODIS CLDPROP L2:
   - `HH:00`, `HH:15`, `HH:30`, `HH:45`
 - Non-quarter-hour files are skipped unless `--no-skip-non-quarter-hour` is passed.
 - In period mode, files are first filtered by filename datetime range (`A%Y%j.%H%M`) and then quarter-hour filtering is applied.
+- Only observations with `sensor_zenith < 18.0°` are used for all statistics and counts.
 - In period mode, selected files are processed in parallel via `multiprocessing.Pool`.
 - `cph_mean` is computed from cloudy-only samples (water/mixed/ice), excluding no-cloud.
 - `cth_*` and `ctt_*` are also computed from cloudy-only samples.
