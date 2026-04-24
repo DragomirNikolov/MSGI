@@ -12,11 +12,19 @@ import xarray as xr
 
 EPOCH_UNITS = "seconds since 1970-01-01 00:00:00"
 SENSOR_ZENITH_MAX_DEG = 18.0
-PHASE_INVALID = -1
-PHASE_NO_CLOUD = 0
-PHASE_WATER = 1
-PHASE_ICE = 2
-PHASE_MIXED = 3
+
+# For cloud top properties product
+# PHASE_INVALID = -1
+# PHASE_NO_CLOUD = 0
+# PHASE_WATER = 1
+# PHASE_ICE = 2
+# PHASE_MIXED = 3
+# For optical properties product (which seems to have more valid phase values, but we only consider these 4 classes):
+PHASE_INVALID = 0
+PHASE_NO_CLOUD = 1
+PHASE_WATER = 2
+PHASE_ICE = 3
+PHASE_MIXED = 10
 
 
 """
@@ -168,7 +176,8 @@ def _read_modis_fields(
         sensor_zenith_deg = np.asarray(ds_geo["sensor_zenith"].values, dtype=np.float64)
 
     with xr.open_dataset(input_path, group="geophysical_data") as ds_gph:
-        phase_raw = np.asarray(ds_gph["Cloud_Phase_Cloud_Top_Properties"].values)
+        # phase_raw = np.asarray(ds_gph["Cloud_Phase_Cloud_Top_Properties"].values)
+        phase_raw = np.asarray(ds_gph["Cloud_Phase_Optical_Properties"].values)
         cth_raw_m = np.asarray(ds_gph["Cloud_Top_Height"].values, dtype=np.float64)
         ctt_raw_k = np.asarray(ds_gph["Cloud_Top_Temperature"].values, dtype=np.float64)
 
@@ -634,7 +643,7 @@ def process_time_period(
 
         if skip_non_quarter_hour and not _quarter_hour(file_dt):
             summary["skipped_non_quarter_hour"] += 1
-            print(f"Skipping {in_path.name}: filename time {file_dt:%Y-%m-%d %H:%M} is not quarter-hour")
+            # print(f"Skipping {in_path.name}: filename time {file_dt:%Y-%m-%d %H:%M} is not quarter-hour")
             continue
 
         expected_out = _output_path_for_datetime(output_root, file_dt)
@@ -734,14 +743,66 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    process_time_period(
+    summary = process_time_period(
         base_input_dir = Path("/wolke_scratch/dnikolo/MODIS/CLDPROP_L2_MODIS_Aqua"),
-        output_root = Path("/wolke_scratch/dnikolo/MODIS/CPH_data"),
-        start_time = "20070201_0015",
-        end_time = "20070601_0000",
+        output_root = Path("/wolke_scratch/dnikolo/MODIS/CPH_data_optical"),
+        start_time = "20070101_0000",
+        end_time = "20071231_2345",
         lat_min = -81,
         lat_max=81,
         dlat = 0.3,
         lon_min = -81,
         lon_max = 81,
         dlon = 0.3)
+    print("Summary:", summary)
+    # main()
+
+# from datetime import datetime, timedelta
+# from pathlib import Path
+
+# # Missing days of year in 2007
+# # 
+# MISSING_DOYS = [
+#     257,258, 259, 260, 261, 262, 263, 264, 265, 266, 267, 268, 269, 270,
+#     271, 272, 273, 274, 275, 276, 277, 278, 279, 280, 281, 282, 283, 284,
+#     285, 286, 287, 288, 289, 290, 291, 292, 293, 294, 295, 296, 297, 298,
+#     326, 327, 328,
+# ]
+
+# def doy_to_date(year: int, doy: int) -> datetime:
+#     """Convert day-of-year to a datetime for that calendar day."""
+#     return datetime(year, 1, 1) + timedelta(days=doy - 1)
+
+# def process_missing_days_2007() -> None:
+#     base_input_dir = Path("/wolke_scratch/dnikolo/MODIS/CLDPROP_L2_MODIS_Aqua")
+#     output_root = Path("/wolke_scratch/dnikolo/MODIS/CPH_data")
+
+#     for doy in MISSING_DOYS:
+#         day_dt = doy_to_date(2007, doy)
+#         day_str = day_dt.strftime("%Y%m%d")
+
+#         start_time = f"{day_str}_0000"
+#         end_time = f"{day_str}_2345"
+
+#         print(f"Processing DOY {doy:03d} -> {day_dt:%Y-%m-%d}")
+
+#         summary = process_time_period(
+#             base_input_dir=base_input_dir,
+#             output_root=output_root,
+#             start_time=start_time,
+#             end_time=end_time,
+#             lat_min=-81,
+#             lat_max=81,
+#             dlat=0.3,
+#             lon_min=-81,
+#             lon_max=81,
+#             dlon=0.3,
+#             skip_non_quarter_hour=True,
+#             overwrite=True,
+#             n_workers=8,
+#         )
+
+#         print(f"Summary for {day_dt:%Y-%m-%d}: {summary}")
+
+# if __name__ == "__main__":
+#     process_missing_days_2007()
