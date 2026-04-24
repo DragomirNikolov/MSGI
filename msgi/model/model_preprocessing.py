@@ -133,9 +133,24 @@ def split_dir_files(gte_config, msgi_config):
     # Mixed temperature bounds across all ranges
     T_min_mixed = min(x for t in T_ranges for x in t)
     T_max_mixed = max(x for t in T_ranges for x in t)
+
+    start_date = gte_config["start_time"].replace(hour=0, minute=0, second=0, microsecond=0)
+    end_date = gte_config["end_time"].replace(hour=0, minute=0, second=0, microsecond=0)
+
+    def extract_file_date(filepath):
+        """Extract datetime from filename."""
+        basename = os.path.basename(filepath)
+        match = re.search(r"(\d{8}T\d{6}Z)", basename)
+        if not match:
+            return None
+        return datetime.strptime(match.group(1), "%Y%m%dT%H%M%SZ")
+    
     for file in os.listdir(folder_path):
         if grid_type=="latlon":
             if file.startswith(f"remap_laf_whole_{experiment_name}"):
+                date = extract_file_date(file)
+                if date is None or date < start_date or date > end_date:
+                    continue
                 file_path = os.path.join(folder_path, file)
             else:
                 continue
@@ -143,6 +158,9 @@ def split_dir_files(gte_config, msgi_config):
             file_path=None
             for pole in poles:
                 if file.startswith(f"remap_laf_{pole}_{experiment_name}"):
+                    date = extract_file_date(file)
+                    if date is None or date < start_date or date > end_date:
+                        continue
                     current_pole=pole
                     file_path = os.path.join(folder_path, file)
             if file_path is None:
@@ -161,6 +179,8 @@ def split_dir_files(gte_config, msgi_config):
         mixed_vars = [data[v] for v in mixed_var_names]
 
         print(f"Processing file: {file} with shape: {CPH.shape}")
+
+
 
         # ---------------------------------------------------------------
         # 1) Existing per-temperature-range output (unchanged behavior)
@@ -319,7 +339,7 @@ def resample_dir_files(gte_config,msgi_config):
         print(
             f"No CTP 2D files found in {input_dir} "
             f"for experiment prefix '{experiment_name}' "
-            f"within date range {start_date_str} to {end_date_str}."
+            f"within date range {start_date} to {end_date}."
         )
         return
 
@@ -398,3 +418,4 @@ if __name__=="__main__":
     # gte_config = None
     msgi_config = read_msgi_config()
     preprocess_dir(gte_config, msgi_config)
+
