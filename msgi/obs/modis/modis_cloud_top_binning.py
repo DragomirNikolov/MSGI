@@ -11,6 +11,7 @@ import xarray as xr
 
 
 EPOCH_UNITS = "seconds since 1970-01-01 00:00:00"
+SENSOR_ZENITH_MAX_DEG = 18.0
 PHASE_INVALID = -1
 PHASE_NO_CLOUD = 0
 PHASE_WATER = 1
@@ -155,13 +156,16 @@ def _period_worker(task: tuple) -> tuple[Path, Path | None, str | None]:
         return in_file, None, str(exc)
 
 
-def _read_modis_fields(input_path: Path) -> tuple[datetime, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+def _read_modis_fields(
+    input_path: Path,
+) -> tuple[datetime, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     with xr.open_dataset(input_path) as ds_root:
         start_dt = _parse_start_time(ds_root)
 
     with xr.open_dataset(input_path, group="geolocation_data") as ds_geo:
         lat = np.asarray(ds_geo["latitude"].values, dtype=np.float64)
         lon = np.asarray(ds_geo["longitude"].values, dtype=np.float64)
+        sensor_zenith_deg = np.asarray(ds_geo["sensor_zenith"].values, dtype=np.float64)
 
     with xr.open_dataset(input_path, group="geophysical_data") as ds_gph:
         phase_raw = np.asarray(ds_gph["Cloud_Phase_Cloud_Top_Properties"].values)
@@ -170,7 +174,12 @@ def _read_modis_fields(input_path: Path) -> tuple[datetime, np.ndarray, np.ndarr
 
     if lat.shape != lon.shape:
         raise ValueError("latitude and longitude shapes differ")
-    if phase_raw.shape != lat.shape or cth_raw_m.shape != lat.shape or ctt_raw_k.shape != lat.shape:
+    if (
+        phase_raw.shape != lat.shape
+        or cth_raw_m.shape != lat.shape
+        or ctt_raw_k.shape != lat.shape
+        or sensor_zenith_deg.shape != lat.shape
+    ):
         raise ValueError("Geophysical/geolocation variable shapes do not match")
 
     phase = np.full(lat.shape, PHASE_INVALID, dtype=np.int8)
@@ -187,12 +196,13 @@ def _read_modis_fields(input_path: Path) -> tuple[datetime, np.ndarray, np.ndarr
     cth_km = cth_raw_m / 1000.0
     ctt_k = ctt_raw_k
 
-    return start_dt, lat, lon, phase, cth_km, ctt_k
+    return start_dt, lat, lon, sensor_zenith_deg, phase, cth_km, ctt_k
 
 
 def _aggregate_to_grid(
     lat: np.ndarray,
     lon: np.ndarray,
+    sensor_zenith_deg: np.ndarray,
     phase: np.ndarray,
     cth_km: np.ndarray,
     ctt_k: np.ndarray,
@@ -209,15 +219,17 @@ def _aggregate_to_grid(
 
     lat_flat = lat.ravel()
     lon_flat = lon.ravel()
+    zenith_flat = sensor_zenith_deg.ravel()
     phase_flat = phase.ravel()
     cth_flat = cth_km.ravel()
     ctt_flat = ctt_k.ravel()
 
     geo_ok = np.isfinite(lat_flat) & np.isfinite(lon_flat)
+    zenith_ok = np.isfinite(zenith_flat) & (zenith_flat < SENSOR_ZENITH_MAX_DEG)
     lat_idx, lat_in = _bin_index(lat_flat, lat_min, dlat, n_lat)
     lon_idx, lon_in = _bin_index(lon_flat, lon_min, dlon, n_lon)
 
-    in_grid = geo_ok & lat_in & lon_in
+    in_grid = geo_ok & zenith_ok & lat_in & lon_in
     lat_idx = lat_idx[in_grid]
     lon_idx = lon_idx[in_grid]
     phase_flat = phase_flat[in_grid]
@@ -411,7 +423,7 @@ def _aggregate_to_grid(
             "flag_values": np.array([-1.0, 0.0, 1.0, 1.5, 2.0], dtype=np.float32),
             "flag_meanings": "no_measurement no_cloudy_tops liquid mixed ice",
             "coordinates": coord_ref,
-            "comment": "Computed from cloudy samples only:  liquid=1, mixed=1.5, ice=2; -1 indicates no measurements in bin.",
+            "comment": "Computed from cloudy samples only: liquid=1, mixed=1.5, ice=2; sensor_zenith < 18 deg; -1 indicates no measurements in bin.",
         }
     )
 
@@ -423,7 +435,7 @@ def _aggregate_to_grid(
             "missing_value": np.float32(cth_fill),
             "valid_min": np.float32(0.0),
             "coordinates": coord_ref,
-            "comment": "-1 indicates no cloudy tops in bin.",
+            "comment": "-1 indicates no cloudy tops in bin; sensor_zenith < 18 deg filter applied.",
         }
     )
     out["cth_std"].attrs.update(
@@ -434,7 +446,7 @@ def _aggregate_to_grid(
             "missing_value": np.float32(np.nan),
             "valid_min": np.float32(0.0),
             "coordinates": coord_ref,
-            "comment": "NaN indicates undefined (e.g., no cloudy tops).",
+            "comment": "NaN indicates undefined (e.g., no cloudy tops); sensor_zenith < 18 deg filter applied.",
         }
     )
 
@@ -446,7 +458,7 @@ def _aggregate_to_grid(
             "missing_value": np.float32(ctt_fill),
             "valid_min": np.float32(0.0),
             "coordinates": coord_ref,
-            "comment": "-1 indicates no cloudy tops in bin.",
+            "comment": "-1 indicates no cloudy tops in bin; sensor_zenith < 18 deg filter applied.",
         }
     )
     out["ctt_std"].attrs.update(
@@ -457,7 +469,7 @@ def _aggregate_to_grid(
             "missing_value": np.float32(np.nan),
             "valid_min": np.float32(0.0),
             "coordinates": coord_ref,
-            "comment": "NaN indicates undefined (e.g., no cloudy tops).",
+            "comment": "NaN indicates undefined (e.g., no cloudy tops); sensor_zenith < 18 deg filter applied.",
         }
     )
 
@@ -512,10 +524,10 @@ def _aggregate_to_grid(
     out.attrs.update(
         {
             "title": "Binned cloud-top phase, height, and temperature statistics",
-            "summary": "MODIS cloud-top phase/height/temperature statistics aggregated to regular lat/lon bins.",
+            "summary": "MODIS cloud-top phase/height/temperature statistics aggregated to regular lat/lon bins using sensor_zenith < 18 deg observations.",
             "Conventions": "CF-1.10",
             "featureType": "grid",
-            "source": "Binned from MODIS CLDPROP_L2 Cloud_Phase_Cloud_Top_Properties, Cloud_Top_Height, and Cloud_Top_Temperature",
+            "source": "Binned from MODIS CLDPROP_L2 Cloud_Phase_Cloud_Top_Properties, Cloud_Top_Height, Cloud_Top_Temperature and sensor_zenith",
             "history": "Created by modis_cloud_top_binning.py",
         }
     )
@@ -538,7 +550,7 @@ def process_one_file(
     lat_edges = _build_edges(lat_min, lat_max, dlat, "latitude")
     lon_edges = _build_edges(lon_min, lon_max, dlon, "longitude")
 
-    start_dt, lat, lon, phase, cth_km, ctt_k = _read_modis_fields(input_path)
+    start_dt, lat, lon, sensor_zenith_deg, phase, cth_km, ctt_k = _read_modis_fields(input_path)
     out_path = _output_path_for_datetime(output_root, start_dt)
 
     if skip_non_quarter_hour and not _quarter_hour(start_dt):
@@ -558,6 +570,7 @@ def process_one_file(
     out_ds = _aggregate_to_grid(
         lat=lat,
         lon=lon,
+        sensor_zenith_deg=sensor_zenith_deg,
         phase=phase,
         cth_km=cth_km,
         ctt_k=ctt_k,
@@ -724,12 +737,11 @@ if __name__ == "__main__":
     process_time_period(
         base_input_dir = Path("/wolke_scratch/dnikolo/MODIS/CLDPROP_L2_MODIS_Aqua"),
         output_root = Path("/wolke_scratch/dnikolo/MODIS/CPH_data"),
-        start_time = "20070601_0000",
-        end_time = "20071231_2345",
+        start_time = "20070201_0015",
+        end_time = "20070601_0000",
         lat_min = -81,
         lat_max=81,
         dlat = 0.3,
         lon_min = -81,
         lon_max = 81,
         dlon = 0.3)
-    # main()

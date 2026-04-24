@@ -43,6 +43,7 @@ By default, this runs in parallel with `8` workers:
 
 This scans `YYYY/DDD/*.nc`, filters by filename time in `[start, end]`, and writes one `MOD_CT_...nc` per accepted granule.
 It also prints a summary dictionary at the end (`seen`, `in_range`, `processed`, `skipped_non_quarter_hour`, `overwritten`, `failed`).
+All outputs are computed only from observations where `sensor_zenith < 18.0°`.
 
 ## 4) Run period mode sequentially (for comparison/debug)
 ```bash
@@ -104,3 +105,4 @@ ncdump -h /wolke_scratch/dnikolo/dump/modis_cloud_top/2007/01/02/MOD_CT_20070102
 - Phase code `6` (undetermined) is treated as invalid and excluded from all stats/counts.
 - `n_obs` counts only valid classified observations (`0/1/2/3`).
 - `cph_mean` excludes no-cloud samples and uses: water `1`, mixed `0.5`, ice `2`.
+- All counts/fractions/means/stds use only `sensor_zenith < 18.0°` observations.
