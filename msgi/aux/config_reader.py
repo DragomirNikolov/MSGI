@@ -65,7 +65,6 @@ def _validate_config(config: dict[str, Any]) -> dict[str, Any]:
         "resample_input_dir",
         "resample_output_dir",
         "cdo_aux_dir",
-        "laf_weights_file",
         "dis_weights_file",
     ]
     if grid_type!="geostationary":

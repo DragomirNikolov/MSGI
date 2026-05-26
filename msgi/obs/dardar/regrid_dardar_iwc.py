@@ -206,7 +206,7 @@ def main():
     print(f"Regridding to {GRID_RES}x{GRID_RES} degree grid ...")
     lat_grid, lon_grid, iwc_grid, count_grid = regrid_to_2x2(lat, lon, iwc_col)
     n_cells = np.sum(count_grid > 0)
-    print(f"  Grid cells with data: {n_cells} / {len(lat_grid)*len(lon_grid)}")
+    print(f"Grid cells with data: {n_cells} / {len(lat_grid)*len(lon_grid)}")
 
     save_gridded(outfile, lat_grid, lon_grid, iwc_grid, count_grid,
                  source_file=infile.split("/")[-1])

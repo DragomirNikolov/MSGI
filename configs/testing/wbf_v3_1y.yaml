@@ -13,6 +13,7 @@ cdo_grid_file: {"np": "/nfs/ch4/wolke_scratch/dnikolo/ICON_Data/aux_tools/grid_C
 cdo_threads: 8
 
 resampling_methods: ["laf"]
+
 twc_threshold: 1.0e-5
 mixed_vars:
   - ctt
