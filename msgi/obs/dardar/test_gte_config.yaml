@@ -1,0 +1,109 @@
+########################
+# Global paremeters
+########################
+# Start and end date and time for the analyis run:
+# The date and time are in the format YYYYMMDD_HHMM
+start_time: "20070501_0000"
+end_time: "20070512_0000"
+# List of temperature bin widths [deg C] for which the analysis is performed
+# Stability has only been tested with only 1 member in the list so the usage of more is discouraged
+t_deltas: [6]
+#Is this file used to set up an analysis of a whole year of data
+Analyze_year: False
+# In how many parts are the months in this year split
+n_month_parts: 2
+# The folder which contains the following structure:
+# {year}_tracking
+#      01_01.yaml
+#      01_02.yaml
+#      ...
+#      01_<n_month_parts>.yaml
+#      02_01.yaml
+#      ...
+#      02_<n_month_parts>.yaml
+#      ...
+#      12_<n_month_parts>.yaml
+yearly_config_folder: "/cluster/work/climate/dnikolo/n2o/Glaciation_time_estimator/configs"
+
+########################
+# Data structure and location
+########################
+
+# Check wether the file is split in two folders for the hemispheres (poles)
+pole_split: True
+# Name of said folders
+pole_folders: ["np", "sp"]
+# Boundary date for the CLAAS-3 data
+struct_boundary_date: "20210101_0000"
+# Auxiliary files filepaths dictionary. There should be a member for each pole folder
+aux_fps:
+  {
+    "np": "/cluster/work/climate/dnikolo/Auxiliary_files/CM_SAF_CLAAS3_L2_AUX_NP.nc",
+    "sp": "/cluster/work/climate/dnikolo/Auxiliary_files/CM_SAF_CLAAS3_L2_AUX_SP.nc",
+  }  
+
+aux_fps_agg:
+  {
+    "np": "/nfs/n2o/wolke_scratch/dnikolo/Glaciation_time_estimator/grids/agg_pixel_area_np.nc",
+    "sp": "/nfs/n2o/wolke_scratch/dnikolo/Glaciation_time_estimator/grids/agg_pixel_area_sp.nc",
+  }  
+
+#Location of the files used for the temporary grid when resampling is turned off
+grid_fps:
+  {
+    "np": "/cluster/work/climate/dnikolo/n2o/Glaciation_time_estimator/grids/grid_np.txt",
+    "sp": "/cluster/work/climate/dnikolo/n2o/Glaciation_time_estimator/grids/grid_sp.txt"
+  }
+
+# File path of the CLAAS dataset that contains the pole(hemisphere) folders
+# The program expects the following file structure:
+# {CLAAS_fp}
+#        .../{pole_folders[0]}/YYYY/MM/DD
+#        .../{pole_folders[1]}/YYYY/MM/DD
+#        etc.
+# The analized time period shuld be available in both hemispheres for the program to work
+CLAAS_fp: "/nfs/ch4/wolke_scratch/dnikolo/CLAAS_Data/"
+# Folder where the netcdf cloud tracking location files are stored
+job_output_fp: "/nfs/ch4/wolke_scratch/dnikolo/Euler_backup/"
+
+###############
+# Preprocessing settings
+########################
+# Should the file be resampled.
+# If true the code first resamples the original CLAAS-3 L2 geostationary grid to a regular lat-lon grid
+# Reccomended - Resample: False. No claims are made about the functtioning and accuracy of the resampled outputs
+Resample: False
+# The program aggregates the file in a agg_fact x agg_fact squares as explained in the documentation
+# Reccomended - agg_fact: 3
+agg_fact: 3
+# Total number of cores working on the preprocessing
+# To turn multiprocessing on set this to 1
+n_preproc_cores: 6
+# Number of threads per core executing commands
+n_preproc_threads: 8
+
+########################
+# Postprocessing settings
+########################
+# In fast mode the postprocessing checks a limited pre-set number of pixels within each cloud. 
+# This means that the last pixels of the lage clouds may be ignored
+# The "fast mode" only accelerated the single cloud analysis component of the postprocessing
+# Reccomended - postprocessing_fast_mode: False
+postprocessing_fast_mode: False
+fast_mode_arr_size: 20000
+# Folder to output the cloud and glaciation properties parquet (and CSV) files
+postprocessing_output_dir: eu:/cluster/work/climate/dnikolo/Cloud_analysis/
+#Format of the postprocessing_output_dir subfolder name in which the outputs from a given run are stored
+time_folder_format: "%Y%m%d.%H%M"
+n_postproc_cores: 4
+# Should the program output a CSV file with cloud and glaciation properties on top of the standard parquet binary 
+# Turn on for readability
+write_csv: False
+# Defined as every analisis done outside cloud top phase and cloud top temperature
+# Defined as 
+collect_additional_properties: True
+# The standard RMSE used to determine wether a glaciation is linear. Read more in the documentation.
+Global_sqrt_mse: 0.05628526744657018
+glac_threshold: 0.4
+validation_mode: DARDAR
+DARDAR_CPH_fp: "/nfs/ch4/wolke_scratch/dnikolo/MSGI/DARDAR_analysis/CPH_data"
