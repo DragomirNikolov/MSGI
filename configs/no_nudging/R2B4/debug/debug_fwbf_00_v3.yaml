@@ -1,0 +1,21 @@
+resample_input_dir: "/nfs/ch4/wolke_scratch/dnikolo/ICON_Data/no_nudging/R2B4/debug_fwbf_00_v3/raw_data"
+
+resample_output_dir: "/nfs/ch4/wolke_scratch/dnikolo/ICON_Data/no_nudging/R2B4/debug_fwbf_00_v3/resampled"
+# preprocessing_output_dir: /nfs/ch4/wolke_scratch/dnikolo/ICON_Data/Nudged_run_cph_03_03
+experiment_name: "r2b4_debug_fwbf_00_v3"
+
+# CDO Settings and helper files
+grid_type: "geostationary"
+#Only required in geostationary grid
+poles: ["np","sp"]
+cdo_aux_dir: "/nfs/ch4/wolke_scratch/dnikolo/ICON_Data/aux_tools"
+cdo_grid_file: {"np": "/nfs/ch4/wolke_scratch/dnikolo/ICON_Data/aux_tools/grid_CLAAS_Agg_3_np.txt",
+                "sp": "/nfs/ch4/wolke_scratch/dnikolo/ICON_Data/aux_tools/grid_CLAAS_Agg_3_sp.txt"}
+cdo_threads: 8
+
+resampling_methods: ["laf"]
+twc_threshold: 1.0e-5
+mixed_vars:
+  - ctt
+  - ctp
+
