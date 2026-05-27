@@ -42,6 +42,10 @@ Nevertheless, we find that the IF measured by the different satellites is positi
 
 Optional: A team in Leipzig is tracking clouds again in the CLAAS-3 data, but they do not split the frame into individual temperature bins. Instead, they track clouds from the original CLAAS-3 image. I want to run my glaciation detection algorithms on their clouds and see whether my results remain the same.
 
+Relevant figures can be found at:  
+`.../MSGI/plotting/daradar_validation_plots.ipynb`    
+`.../MSGI/plotting/modis_validation_plots.ipynb`
+
 ### Why is glaciation incomplete?
 
 After glaciation peaks, there is a drop in ice fraction. We suspect that this is due to ice crystal sedimentation. Using the DARDAR colocated measurements described above, we are now looking for increases in IWC 900 m below the cloud top at the timestep after peak IF. 900 m corresponds to 15 minutes multiplied by an assumed fall speed of 1 m/s.
@@ -74,6 +78,9 @@ From the current analysis, we can conclude that in the main branch of ICON-HAM a
 2. **Too fast**: glaciation time is shorter than in satellite observations.
 3. **Too often**: the occurrence rate in the model is much higher than in satellite observations.
 
+Relevant figures can be found at.  
+`.../MSGI/plotting/model_vs_satellite_plots.ipynb`  
+`.../MSGI/plotting/model_vs_satellite_plots_fwbf.ipynb`
 #### To-do
 
 What remains is to tune the relevant processes so that the model statistics better match the observations. All of the tasks below have been started, but we do not yet have conclusive results.
