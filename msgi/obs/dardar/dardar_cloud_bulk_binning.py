@@ -835,6 +835,7 @@ def _process_file(
     file_ind: int = 1,
 ) -> None:
     with xr.open_dataset(in_path) as ds_in:
+        # print(f"Processing {in_path}")
         profiles = extract_cloud_bulk_profiles(ds_in)
         out_binned = bin_cloud_bulk_latlon(
             profiles,
