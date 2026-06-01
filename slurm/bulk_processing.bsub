@@ -1,0 +1,43 @@
+#!/bin/bash
+#SBATCH -J bulk_processing
+#SBATCH -t 02:00:00
+#SBATCH -N 1
+#SBATCH -n 8
+#SBATCH --mem-per-cpu=8096
+#SBATCH -q debug
+#SBATCH --mail-type=END,FAIL
+#SBATCH --output=/cluster/work/climate/dnikolo/Job_output/Output/%x.%j.out
+#SBATCH --error=/cluster/work/climate/dnikolo/Job_output/Error/%x.%j.err
+set -e
+
+date
+print_usage() {
+    printf "Usage: ..."
+}
+
+
+
+
+#Copy files to local scratch
+# export TMPDIR="/cluster/work/climate/dnikolo/dump"
+GTE_DIR=/cluster/work/climate/dnikolo/n2o/Glaciation_time_estimator
+MSGI_DIR=/cluster/work/climate/dnikolo/MSGI
+ENV_BIN_DIR=/cluster/work/climate/dnikolo/flex_trkr_2/bin
+
+
+
+#Change variable to counteract a common error in PyFLEXTRKR
+export HDF5_USE_FILE_LOCKING=FALSE
+module load stack/2024-06 gcc/12.2.0 openmpi/4.1.6 nco ffmpeg/6.0 hdf5 #python/3.11.6
+
+#Load pyflextrkr python
+source "${ENV_BIN_DIR}"/activate
+cd $MSGI_DIR/development || exit
+python $MSGI_DIR/development/bulk_statistics.py
+if [ $? -ne 0 ]; then
+    echo "Python script failed, exiting."
+    exit 1
+fi
+
+
+date
