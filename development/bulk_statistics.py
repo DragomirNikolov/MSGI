@@ -104,7 +104,7 @@ def get_bulk_values(row):
             lon_bin=xr.DataArray(row["lon_bin_idx"][i], dims="pixel"),
         )
         cb_iwc_means.append(cb_iwc_values.mean(axis=2)[0])
-        ct_iwc_means.append(ct_iwc_values.mean(axis=1)[0])
+        ct_iwc_means.append(float(ct_iwc_values.mean(axis=1).isel(time_bin=0).values))
     return cb_iwc_means, ct_iwc_means
 
 

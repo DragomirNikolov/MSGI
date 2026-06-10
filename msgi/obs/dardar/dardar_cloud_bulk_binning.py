@@ -28,16 +28,13 @@ MIXED_CODES = np.array([4, 14], dtype=np.int16)
 DARDAR_NHEIGHTS = 436
 DARDAR_DZ_M = 60.0
 DARDAR_HEIGHT_TOP_M = 25080.0
-BULK_LEVEL_OFFSETS_M = np.array(
-    [
-        [-600.0, -720.0],
-        [-720.0, -840.0],
-        [-840.0, -960.0],
-        [-960.0, -1080.0],
-        [-1080.0, -1200.0],
-    ],
-    dtype=np.float32,
-)
+# Calculate a 2d array of the heights of the individual levels
+HEIGHT_RANGES = [[-240,-1200],[-1380,-2100]]
+BULK_LEVEL_OFFSETS_M=np.empty((1,2),dtype=np.float32)
+for range in HEIGHT_RANGES:
+    temp = np.arange(range[0],range[1]-DARDAR_DZ_M,-int(DARDAR_DZ_M*2),dtype=np.float32,)
+    BULK_LEVEL_OFFSETS_M = np.concatenate([BULK_LEVEL_OFFSETS_M,np.array(list(zip(temp[:-1],temp[1:])))],axis=0)
+BULK_LEVEL_OFFSETS_M = BULK_LEVEL_OFFSETS_M[1:]
 
 
 def reconstruct_height(n_levels: int = DARDAR_NHEIGHTS) -> np.ndarray:
@@ -116,6 +113,7 @@ def _to_datetime64_ns(time_var: xr.DataArray) -> np.ndarray:
     valid = np.isfinite(seconds)
     out[valid] = base + np.rint(seconds[valid] * 1e9).astype("timedelta64[ns]")
     return out
+    
 
 
 def round_ns_timestamps(ts: np.ndarray, dt_min: int = 15) -> np.ndarray:
@@ -285,13 +283,18 @@ def extract_cloud_bulk_profiles(ds: xr.Dataset) -> xr.Dataset:
                 top_iwc[row] = np.float32(np.nanmean(top_iwc_vals[top_valid]))
                 top_height[row] = np.float32(np.nanmean(top_height_vals[top_valid]) / 1000.0)
                 top_temp[row] = np.float32(np.nanmean(top_temp_vals[top_valid]))
+        for level, (top_offset_m, bottom_offset_m) in enumerate(BULK_LEVEL_OFFSETS_M):
+            start = int(round(abs(top_offset_m) / DARDAR_DZ_M))
+            stop = int(round(abs(bottom_offset_m) / DARDAR_DZ_M))
 
-        for level in range(n_bulk):
-            start = 10 + 2 * level
-            pair = [top + lower_step * start, top + lower_step * (start + 1)]
-            valid_pair_idx = [col for col in pair if 0 <= col < n_height]
-            if not valid_pair_idx:
+            pair = [
+                top + lower_step * idx
+                for idx in range(start, stop)
+                if 0 <= top + lower_step * idx < n_height
+            ]
+            if (not pair) or (len(pair)!=2):
                 continue
+            valid_pair_idx=pair
 
             iwc_vals = iwc[row, valid_pair_idx]
             finite = np.isfinite(iwc_vals)
@@ -345,7 +348,7 @@ def extract_cloud_bulk_profiles(ds: xr.Dataset) -> xr.Dataset:
     out["cb_top_iwc"].attrs.update({"long_name": "Cloud-top IWC", "units": "kg m-3"})
     out["cb_top_height_km"].attrs.update({"long_name": "Cloud-top layer height", "units": "km"})
     out["cb_top_temp_k"].attrs.update({"long_name": "Cloud-top layer temperature", "units": "K"})
-    out["cb_iwc"].attrs.update({"long_name": "Cloud-bulk IWC", "units": "kg m-3"})
+    out["cb_iwc"].attrs.update({"long_name": "Cloud-bulk IWC", "units": "kg m-3", f"Offset from top": f"{BULK_LEVEL_OFFSETS_M[:,0]}"})
     out["cb_height_km"].attrs.update({"long_name": "Cloud-bulk layer height", "units": "km"})
     out["cb_temp_k"].attrs.update({"long_name": "Cloud-bulk layer temperature", "units": "K"})
     out["cb_top_n_valid_levels"].attrs.update({"long_name": "Number of valid source levels used for cloud-top averaging"})
