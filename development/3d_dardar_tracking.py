@@ -13,7 +13,7 @@ from tqdm import tqdm
 TRACKING_PARQUET = Path(
     "/wolke_scratch/dnikolo/GTE_Validation/DARDAR/Test_bulk/Final_results/2007_glac_04.parquet"
 )
-DARDAR_CLOUD_ROOT = Path("/wolke_scratch/dnikolo/DARDAR_data/DARDAR-CLOUD")
+DARDAR_CLOUD_ROOT = Path("/wolke_scratch/dnikolo/DARDAR_data/DARDAR-CLOUD/V3_1")
 TRACKING_OUTPUT_DIR = Path("/wolke_scratch/dnikolo/dump/dardar-cloud_cb")
 TRACKING_ALLOWED_CTH_DEV_M = 1000.0
 TRACKING_LAT_MIN = -81.0
