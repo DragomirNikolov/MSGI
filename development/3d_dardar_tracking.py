@@ -9,12 +9,16 @@ from multiprocessing import Pool, cpu_count
 from pathlib import Path
 from netCDF4 import Dataset
 from tqdm import tqdm
+import os
+from glaciation_time_estimator.auxiliary_func.config_reader import read_config
 
-TRACKING_PARQUET = Path(
-    "/wolke_scratch/dnikolo/GTE_Validation/DARDAR/Test_bulk/Final_results/2007_glac_04.parquet"
-)
+config = read_config()
+ANALYSIS_YEAR=config["start_time"].year
+OUTPUT_FOLDER=config["postprocessing_output_dir"]
+
+TRACKING_PARQUET = Path(os.path.join(OUTPUT_FOLDER,"Final_results", f"{ANALYSIS_YEAR}_glac_04.parquet"))
 DARDAR_CLOUD_ROOT = Path("/wolke_scratch/dnikolo/DARDAR_data/DARDAR-CLOUD/V3_1")
-TRACKING_OUTPUT_DIR = Path("/wolke_scratch/dnikolo/dump/dardar-cloud_cb")
+TRACKING_OUTPUT_DIR = Path(os.path.join("/wolke_scratch/dnikolo/DARDAR_data/CB_data",f"{ANALYSIS_YEAR}"))
 TRACKING_ALLOWED_CTH_DEV_M = 1000.0
 TRACKING_LAT_MIN = -81.0
 TRACKING_LAT_MAX = 81.0

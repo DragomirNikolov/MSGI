@@ -14,7 +14,15 @@ date
 print_usage() {
     printf "Usage: ..."
 }
-
+while getopts 'c:m:' flag; do
+    case "${flag}" in
+    c) GTE_CONFIG_DIR=${OPTARG};;
+    *)
+        print_usage
+        exit 1
+        ;;
+    esac
+done
 
 
 
@@ -33,7 +41,9 @@ module load stack/2024-06 gcc/12.2.0 openmpi/4.1.6 nco ffmpeg/6.0 hdf5 #python/3
 #Load pyflextrkr python
 source "${ENV_BIN_DIR}"/activate
 cd $MSGI_DIR/development || exit
-python $MSGI_DIR/development/bulk_statistics.py
+echo "GTE_CONFIG_DIR is ${GTE_CONFIG_DIR}"
+python $MSGI_DIR/development/bulk_statistics.py -c $GTE_CONFIG_DIR
+
 if [ $? -ne 0 ]; then
     echo "Python script failed, exiting."
     exit 1

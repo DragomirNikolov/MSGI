@@ -1,13 +1,22 @@
 import xarray as xr
 import pandas as pd
 import numpy as np
-
+import os
+from glaciation_time_estimator.auxiliary_func.config_reader import read_config
+from glaciation_time_estimator.auxiliary_func.chunking_data import ChunkLoader
 
 ALLOWED_CTH_DEV=1000
+config = read_config()
+ANALYSIS_YEAR=config["start_time"].year
+OUTPUT_FOLDER=config["postprocessing_output_dir"]
+# CB_data_path = f"/nfs/ch4/wolke_scratch/dnikolo/DARDAR_data/CB_data/{ANALYSIS_YEAR}"
+CB_data_path = "/nfs/ch4/wolke_scratch/dnikolo/dump/dardar-cloud_cb"
+
+
 def _check_val_seviri_coincidence(row):
     points_of_interest = row["val_cth_hist"] > 0
     if type(row["cth_hist"]) == float:
-            N+=1
+            # N+=1
             return np.nan 
     cth_deviations = np.abs(row["cth_hist"][points_of_interest] - row["val_cth_hist"][points_of_interest])
     if cth_deviations.size == 0:
@@ -28,7 +37,10 @@ def _identify_times_to_process(row):
     idx = np.where((val_if_hist >= -0.01) & (val_if_hist <= 1.01))[0]
     return row.track_start_time+idx*pd.Timedelta(minutes=15)
 
-cloud_data = pd.read_parquet("/nfs/ch4/wolke_scratch/dnikolo/GTE_Validation/DARDAR/Test_bulk/Final_results/2007_glac_04.parquet")
+# cloud_data = pd.read_parquet("/nfs/ch4/wolke_scratch/dnikolo/GTE_Validation/DARDAR/Test_bulk/Final_results/2007_glac_04.parquet")
+# cloud_data = pd.read_parquet(os.path.join(OUTPUT_FOLDER,"Final_results", f"{ANALYSIS_YEAR}_glac_04.parquet"))
+loader = ChunkLoader([ANALYSIS_YEAR],config=config)
+cloud_data = loader.glac_chunk
 cloud_data["val_seviri_coincidence"] = cloud_data.apply(_get_val_seviri_coincidence,axis=1)
 valid_clouds = cloud_data[cloud_data["val_seviri_coincidence"]==True]
 valid_clouds["colocation_time"]=valid_clouds.apply(_identify_times_to_process, axis=1)
@@ -39,7 +51,7 @@ col_time = row_temp["colocation_time"][0]
 dt = pd.Timestamp(col_time)
 time_str = dt.strftime("%Y%m%d_%H%M")
 
-path = f"/nfs/ch4/wolke_scratch/dnikolo/dump/dardar-cloud_cb/DD_CB_{time_str}.nc"
+path = os.path.join(CB_data_path,f"DD_CB_{time_str}.nc")
 print(path)
 ds = xr.open_dataset(path)
 
@@ -72,21 +84,28 @@ def get_colocation_ind(row):
     return lat_idx_list,lon_idx_list
 # col_time = row["colocation_time"][0]
 def get_bulk_values(row):
-    iwc_means  = []
+    cb_iwc_means  = []
+    ct_iwc_means = []
     for i in range(len(row["colocation_time"])):
         col_time = row["colocation_time"][i]
         dt = pd.Timestamp(col_time)
         time_str = dt.strftime("%Y%m%d_%H%M")
 
-        path = f"/nfs/ch4/wolke_scratch/dnikolo/dump/dardar-cloud_cb/DD_CB_{time_str}.nc"
+        # path = f"/nfs/ch4/wolke_scratch/dnikolo/dump/dardar-cloud_cb/"
+        path = os.path.join(CB_data_path,f"DD_CB_{time_str}.nc")
         print(path)
         ds = xr.open_dataset(path)
         cb_iwc_values = ds["cb_iwc_mean"].isel(
             lat_bin=xr.DataArray(row["lat_bin_idx"][i], dims="pixel"),
             lon_bin=xr.DataArray(row["lon_bin_idx"][i], dims="pixel"),
             )
-        iwc_means.append(cb_iwc_values.mean(axis=2)[0])
-    return iwc_means
+        ct_iwc_values = ds["cb_top_iwc_mean"].isel(
+            lat_bin=xr.DataArray(row["lat_bin_idx"][i], dims="pixel"),
+            lon_bin=xr.DataArray(row["lon_bin_idx"][i], dims="pixel"),
+        )
+        cb_iwc_means.append(cb_iwc_values.mean(axis=2)[0])
+        ct_iwc_means.append(ct_iwc_values.mean(axis=1)[0])
+    return cb_iwc_means, ct_iwc_means
 
 
 def extract_iwc_relative_to_peak(row):
@@ -97,6 +116,7 @@ def extract_iwc_relative_to_peak(row):
 
     for i, iwc_profile in enumerate(row["iwc_bulk_means"]):
         col_time = pd.Timestamp(row["colocation_time"][i])
+        iwc_ct = row["iwc_top_means"]
 
         # Index of the colocation time within the cloud track
         col_ind = int(round((col_time - track_start).total_seconds() / (15 * 60)))
@@ -108,7 +128,8 @@ def extract_iwc_relative_to_peak(row):
             "Cloud_ID": row["Cloud_ID"],
             "rel_ind": rel_ind,
             "rel_time_min": rel_ind * 15,
-            "iwc_profile": np.asarray(iwc_profile)
+            "iwc_profile": np.asarray(iwc_profile),
+            "iwc_ct": iwc_ct
         })
 
     return records
@@ -120,8 +141,7 @@ valid_clouds[["lat_bin_idx", "lon_bin_idx"]] = (
     .apply(get_colocation_ind, axis=1, result_type="expand")
 )
 
-valid_clouds["iwc_bulk_means"] = valid_clouds.apply(get_bulk_values, axis=1)
-
+valid_clouds[["iwc_bulk_means","iwc_top_means"]] = (valid_clouds.apply(get_bulk_values, axis=1, result_type="expand"))
 
 
 all_records = []
@@ -141,5 +161,5 @@ iwc_stats_by_rel_time = (
 )
 iwc_stats_by_rel_time["rel_time_min"] = iwc_stats_by_rel_time["rel_ind"] * 15
 
-iwc_rel_df.to_parquet("iwc_rel_df.parquet")
-iwc_stats_by_rel_time.to_parquet("mean_iwc_by_height_data.parquet")
+iwc_rel_df.to_parquet(f"iwc_rel_df_V3_1_{ANALYSIS_YEAR}.parquet")
+iwc_stats_by_rel_time.to_parquet(f"mean_iwc_by_height_data_V3_1_{ANALYSIS_YEAR}.parquet")
