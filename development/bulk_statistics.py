@@ -9,8 +9,8 @@ ALLOWED_CTH_DEV=1000
 config = read_config()
 ANALYSIS_YEAR=config["start_time"].year
 OUTPUT_FOLDER=config["postprocessing_output_dir"]
-# CB_data_path = f"/nfs/ch4/wolke_scratch/dnikolo/DARDAR_data/CB_data/{ANALYSIS_YEAR}"
-CB_data_path = "/nfs/ch4/wolke_scratch/dnikolo/dump/dardar-cloud_cb"
+CB_data_path = f"/nfs/ch4/wolke_scratch/dnikolo/DARDAR_data/CB_data/{ANALYSIS_YEAR}"
+# CB_data_path = "/nfs/ch4/wolke_scratch/dnikolo/dump/dardar-cloud_cb"
 
 
 def _check_val_seviri_coincidence(row):
