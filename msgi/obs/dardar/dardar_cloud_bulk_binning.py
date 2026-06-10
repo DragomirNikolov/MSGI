@@ -28,13 +28,20 @@ MIXED_CODES = np.array([4, 14], dtype=np.int16)
 DARDAR_NHEIGHTS = 436
 DARDAR_DZ_M = 60.0
 DARDAR_HEIGHT_TOP_M = 25080.0
-# Calculate a 2d array of the heights of the individual levels
-HEIGHT_RANGES = [[-240,-1200],[-1380,-2100]]
-BULK_LEVEL_OFFSETS_M=np.empty((1,2),dtype=np.float32)
-for range in HEIGHT_RANGES:
-    temp = np.arange(range[0],range[1]-DARDAR_DZ_M,-int(DARDAR_DZ_M*2),dtype=np.float32,)
-    BULK_LEVEL_OFFSETS_M = np.concatenate([BULK_LEVEL_OFFSETS_M,np.array(list(zip(temp[:-1],temp[1:])))],axis=0)
-BULK_LEVEL_OFFSETS_M = BULK_LEVEL_OFFSETS_M[1:]
+HEIGHT_RANGES_M = ((-240.0, -1200.0), (-1380.0, -2100.0))
+
+
+def build_bulk_level_offsets(height_ranges_m: tuple[tuple[float, float], ...]) -> np.ndarray:
+    """Build cloud-bulk layer offset bounds from cloud-top-relative height ranges."""
+    layers = []
+    layer_depth_m = DARDAR_DZ_M * 2.0
+    for upper_m, lower_m in height_ranges_m:
+        edges = np.arange(upper_m, lower_m - DARDAR_DZ_M, -layer_depth_m, dtype=np.float32)
+        layers.append(np.column_stack((edges[:-1], edges[1:])))
+    return np.concatenate(layers, axis=0).astype(np.float32)
+
+
+BULK_LEVEL_OFFSETS_M = build_bulk_level_offsets(HEIGHT_RANGES_M)
 
 
 def reconstruct_height(n_levels: int = DARDAR_NHEIGHTS) -> np.ndarray:
@@ -320,6 +327,8 @@ def extract_cloud_bulk_profiles(ds: xr.Dataset) -> xr.Dataset:
             "cb_height_km": (("time", "bulk_level"), bulk_height),
             "cb_temp_k": (("time", "bulk_level"), bulk_temp),
             "cb_n_valid_levels": (("time", "bulk_level"), bulk_n_valid),
+            "bulk_level_offset_top": (("bulk_level",), BULK_LEVEL_OFFSETS_M[:, 0]),
+            "bulk_level_offset_bottom": (("bulk_level",), BULK_LEVEL_OFFSETS_M[:, 1]),
             "time": (("time",), _to_datetime64_ns(ds["time"])),
             "latitude": (("time",), np.asarray(ds["latitude"].values, dtype=np.float64)),
             "longitude": (("time",), np.asarray(ds["longitude"].values, dtype=np.float64)),
@@ -348,7 +357,25 @@ def extract_cloud_bulk_profiles(ds: xr.Dataset) -> xr.Dataset:
     out["cb_top_iwc"].attrs.update({"long_name": "Cloud-top IWC", "units": "kg m-3"})
     out["cb_top_height_km"].attrs.update({"long_name": "Cloud-top layer height", "units": "km"})
     out["cb_top_temp_k"].attrs.update({"long_name": "Cloud-top layer temperature", "units": "K"})
-    out["cb_iwc"].attrs.update({"long_name": "Cloud-bulk IWC", "units": "kg m-3", f"Offset from top": f"{BULK_LEVEL_OFFSETS_M[:,0]}"})
+    out["bulk_level"].attrs.update(
+        {
+            "long_name": "Cloud-bulk layer index below cloud top",
+            "comment": f"0 is the shallowest bulk layer, {n_bulk - 1} is the deepest bulk layer.",
+        }
+    )
+    out["bulk_level_offset_top"].attrs.update(
+        {
+            "long_name": "Upper bound of cloud-bulk layer relative to detected cloud-top cell",
+            "units": "m",
+        }
+    )
+    out["bulk_level_offset_bottom"].attrs.update(
+        {
+            "long_name": "Lower bound of cloud-bulk layer relative to detected cloud-top cell",
+            "units": "m",
+        }
+    )
+    out["cb_iwc"].attrs.update({"long_name": "Cloud-bulk IWC", "units": "kg m-3"})
     out["cb_height_km"].attrs.update({"long_name": "Cloud-bulk layer height", "units": "km"})
     out["cb_temp_k"].attrs.update({"long_name": "Cloud-bulk layer temperature", "units": "K"})
     out["cb_top_n_valid_levels"].attrs.update({"long_name": "Number of valid source levels used for cloud-top averaging"})
@@ -655,7 +682,7 @@ def bin_cloud_bulk_latlon(
     out["bulk_level"].attrs.update(
         {
             "long_name": "Cloud-bulk layer index below cloud top",
-            "comment": "0 is the shallowest bulk layer, 4 is the deepest bulk layer.",
+            "comment": f"0 is the shallowest bulk layer, {n_bulk - 1} is the deepest bulk layer.",
         }
     )
     out["lat_bin"].attrs.update(
