@@ -911,10 +911,10 @@ if __name__ == "__main__":
     # get_single_binned_cloud_top()
     process_multiple_days(
         base_input_dir=Path("/wolke_scratch/dnikolo/DARDAR_data/DARDAR-MASK"),
-        base_output_dir=Path("/wolke_scratch/dnikolo/DARDAR_data/CPH_data"),
-        start_date="20090101",
-        end_date="20091231",
-        bin_size_deg=0.3,
+        base_output_dir=Path("/wolke_scratch/dnikolo/DARDAR_data/CPH_02"),
+        start_date="20080101",
+        end_date="20081231",
+        bin_size_deg=0.2,
         n_workers=8
     )
     
