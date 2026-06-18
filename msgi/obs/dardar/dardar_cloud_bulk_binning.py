@@ -29,7 +29,7 @@ DARDAR_NHEIGHTS = 436
 DARDAR_DZ_M = 60.0
 DARDAR_HEIGHT_TOP_M = 25080.0
 # HEIGHT_RANGES_M = ((0.0, -1200.0), (-1380.0, -2100.0))
-HEIGHT_RANGES_M = ((0.0, -2160))
+HEIGHT_RANGES_M = ((0.0, -2160.0),)
 
 
 def build_bulk_level_offsets(height_ranges_m: tuple[tuple[float, float], ...]) -> np.ndarray:
@@ -224,7 +224,7 @@ def extract_cloud_bulk_profiles(ds: xr.Dataset) -> xr.Dataset:
     Z_var = ds["Z"]
     ext_var = ds["extinction"]
     if dmask.ndim != 2 or iwc_var.ndim != 2 or temp_var.ndim != 2 or Z_var.ndim != 2 or ext_var.ndim != 2:
-        raise ValueError("DARMASK_Simplified_Categorization, iwc, and temperature must all be 2D")
+        raise ValueError("DARMASK_Simplified_Categorization, iwc, temperature, Z, and extinction must all be 2D")
 
     time_dim, height_dim = dmask.dims
     n_time = dmask.sizes[time_dim]
@@ -257,10 +257,12 @@ def extract_cloud_bulk_profiles(ds: xr.Dataset) -> xr.Dataset:
 
     iwc = np.asarray(iwc_var.values, dtype=np.float64)
     temp = np.asarray(temp_var.values, dtype=np.float64)
-    Z = np.asarray(Z.values, dtype=np.float64)
+    Z = np.asarray(Z_var.values, dtype=np.float64)
+    ext = np.asarray(ext_var.values, dtype=np.float64)
     iwc_fill = iwc_var.attrs.get("_FillValue", iwc_var.attrs.get("missing_value", -999.0))
     temp_fill = temp_var.attrs.get("_FillValue", temp_var.attrs.get("missing_value", -999.0))
-    Z_fill = temp_var.attrs.get("_FillValue", Z_var.attrs.get("missing_value", -999.0))
+    Z_fill = Z_var.attrs.get("_FillValue", Z_var.attrs.get("missing_value", -999.0))
+    ext_fill = ext_var.attrs.get("_FillValue", ext_var.attrs.get("missing_value", -999.0))
 
     if np.isfinite(iwc_fill):
         iwc[np.isclose(iwc, iwc_fill)] = np.nan
@@ -275,6 +277,11 @@ def extract_cloud_bulk_profiles(ds: xr.Dataset) -> xr.Dataset:
         Z[np.isclose(Z, Z_fill)] = np.nan
     Z[~np.isfinite(Z)] = np.nan
 
+    if np.isfinite(ext_fill):
+        ext[np.isclose(ext, ext_fill)] = np.nan
+    ext[~np.isfinite(ext)] = np.nan
+    ext[ext < 0.0] = np.nan
+
     top_iwc = np.full(n_time, np.nan, dtype=np.float32)
     top_height = np.full(n_time, np.nan, dtype=np.float32)
     top_temp = np.full(n_time, np.nan, dtype=np.float32)
@@ -284,6 +291,7 @@ def extract_cloud_bulk_profiles(ds: xr.Dataset) -> xr.Dataset:
     bulk_height = np.full((n_time, n_bulk), np.nan, dtype=np.float32)
     bulk_temp = np.full((n_time, n_bulk), np.nan, dtype=np.float32)
     bulk_Z = np.full((n_time, n_bulk), np.nan, dtype=np.float32)
+    bulk_ext = np.full((n_time, n_bulk), np.nan, dtype=np.float32)
     bulk_n_valid = np.zeros((n_time, n_bulk), dtype=np.int16)
 
     for row in valid_rows:
@@ -318,13 +326,20 @@ def extract_cloud_bulk_profiles(ds: xr.Dataset) -> xr.Dataset:
             iwc_vals = iwc[row, valid_pair_idx]
             finite = np.isfinite(iwc_vals)
             bulk_n_valid[row, level] = np.int16(np.count_nonzero(finite))
-            if bulk_n_valid[row, level] == 0:
-                continue
+            if bulk_n_valid[row, level] > 0:
+                bulk_iwc[row, level] = np.float32(np.nanmean(iwc_vals[finite]))
+                bulk_height[row, level] = np.float32(np.nanmean(height_m[valid_pair_idx][finite]) / 1000.0)
+                bulk_temp[row, level] = np.float32(np.nanmean(temp[row, valid_pair_idx][finite]))
 
-            bulk_iwc[row, level] = np.float32(np.nanmean(iwc_vals[finite]))
-            bulk_height[row, level] = np.float32(np.nanmean(height_m[valid_pair_idx][finite]) / 1000.0)
-            bulk_temp[row, level] = np.float32(np.nanmean(temp[row, valid_pair_idx][finite]))
-            bulk_Z[row, level] = np.float32(np.nanmean(Z[row, valid_pair_idx][finite]))
+            Z_vals = Z[row, valid_pair_idx]
+            Z_finite = np.isfinite(Z_vals)
+            if np.any(Z_finite):
+                bulk_Z[row, level] = np.float32(np.nanmean(Z_vals[Z_finite]))
+
+            ext_vals = ext[row, valid_pair_idx]
+            ext_finite = np.isfinite(ext_vals)
+            if np.any(ext_finite):
+                bulk_ext[row, level] = np.float32(np.nanmean(ext_vals[ext_finite]))
 
     out = xr.Dataset(
         data_vars={
@@ -339,6 +354,8 @@ def extract_cloud_bulk_profiles(ds: xr.Dataset) -> xr.Dataset:
             "cb_iwc": (("time", "bulk_level"), bulk_iwc),
             "cb_height_km": (("time", "bulk_level"), bulk_height),
             "cb_temp_k": (("time", "bulk_level"), bulk_temp),
+            "cb_Z": (("time", "bulk_level"), bulk_Z),
+            "cb_extinction": (("time", "bulk_level"), bulk_ext),
             "cb_n_valid_levels": (("time", "bulk_level"), bulk_n_valid),
             "bulk_level_offset_top": (("bulk_level",), BULK_LEVEL_OFFSETS_M[:, 0]),
             "bulk_level_offset_bottom": (("bulk_level",), BULK_LEVEL_OFFSETS_M[:, 1]),
@@ -391,9 +408,16 @@ def extract_cloud_bulk_profiles(ds: xr.Dataset) -> xr.Dataset:
     out["cb_iwc"].attrs.update({"long_name": "Cloud-bulk IWC", "units": "kg m-3"})
     out["cb_height_km"].attrs.update({"long_name": "Cloud-bulk layer height", "units": "km"})
     out["cb_temp_k"].attrs.update({"long_name": "Cloud-bulk layer temperature", "units": "K"})
+    out["cb_Z"].attrs.update({"long_name": "Cloud-bulk radar reflectivity", "units": Z_var.attrs.get("units", "dBZ")})
+    out["cb_extinction"].attrs.update(
+        {"long_name": "Cloud-bulk extinction", "units": ext_var.attrs.get("units", "m-1")}
+    )
     out["cb_top_n_valid_levels"].attrs.update({"long_name": "Number of valid source levels used for cloud-top averaging"})
     out["cb_n_valid_levels"].attrs.update({"long_name": "Number of valid source levels used for cloud-bulk averaging"})
-    out.attrs["source"] = "Derived from DARDAR-CLOUD iwc/temperature and DARMASK_Simplified_Categorization"
+    out.attrs["source"] = (
+        "Derived from DARDAR-CLOUD V3.1 iwc/temperature/Z/extinction and "
+        "DARMASK_Simplified_Categorization"
+    )
     out.attrs["height_index_increasing"] = str(bool(height_increasing))
     return out
 
@@ -445,6 +469,8 @@ def bin_cloud_bulk_latlon(
     bulk_iwc = np.asarray(profile_ds["cb_iwc"].values, dtype=np.float64)
     bulk_height = np.asarray(profile_ds["cb_height_km"].values, dtype=np.float64)
     bulk_temp = np.asarray(profile_ds["cb_temp_k"].values, dtype=np.float64)
+    bulk_z = np.asarray(profile_ds["cb_Z"].values, dtype=np.float64)
+    bulk_ext = np.asarray(profile_ds["cb_extinction"].values, dtype=np.float64)
     bulk_n_valid = np.asarray(profile_ds["cb_n_valid_levels"].values, dtype=np.int16)
 
     valid_geo = np.isfinite(lat) & np.isfinite(lon) & (~np.isnat(time))
@@ -462,6 +488,8 @@ def bin_cloud_bulk_latlon(
     bulk_iwc = bulk_iwc[valid_geo]
     bulk_height = bulk_height[valid_geo]
     bulk_temp = bulk_temp[valid_geo]
+    bulk_z = bulk_z[valid_geo]
+    bulk_ext = bulk_ext[valid_geo]
     bulk_n_valid = bulk_n_valid[valid_geo]
 
     n_lat = lat_edges.size - 1
@@ -485,6 +513,8 @@ def bin_cloud_bulk_latlon(
     bulk_iwc = bulk_iwc[in_bounds]
     bulk_height = bulk_height[in_bounds]
     bulk_temp = bulk_temp[in_bounds]
+    bulk_z = bulk_z[in_bounds]
+    bulk_ext = bulk_ext[in_bounds]
     bulk_n_valid = bulk_n_valid[in_bounds]
 
     shape2d = (n_lat, n_lon)
@@ -543,27 +573,44 @@ def bin_cloud_bulk_latlon(
     bulk_n_valid_levels_sum = np.zeros(shape3d, dtype=np.float64)
     bulk_sum_z = np.zeros(shape3d, dtype=np.float64)
     bulk_sq_z = np.zeros(shape3d, dtype=np.float64)
-    
+    bulk_n_z = np.zeros(shape3d, dtype=np.int32)
+    bulk_sum_ext = np.zeros(shape3d, dtype=np.float64)
+    bulk_sq_ext = np.zeros(shape3d, dtype=np.float64)
+    bulk_n_ext = np.zeros(shape3d, dtype=np.int32)
 
     for level in range(n_bulk):
         level_valid = np.isfinite(bulk_iwc[:, level])
-        if not np.any(level_valid):
-            continue
+        if np.any(level_valid):
+            li = lat_idx[level_valid]
+            lo = lon_idx[level_valid]
+            np.add.at(bulk_sum_iwc[level], (li, lo), bulk_iwc[level_valid, level])
+            np.add.at(bulk_sq_iwc[level], (li, lo), bulk_iwc[level_valid, level] ** 2)
+            np.add.at(bulk_sum_height[level], (li, lo), bulk_height[level_valid, level])
+            np.add.at(bulk_sq_height[level], (li, lo), bulk_height[level_valid, level] ** 2)
+            np.add.at(bulk_sum_temp[level], (li, lo), bulk_temp[level_valid, level])
+            np.add.at(bulk_sq_temp[level], (li, lo), bulk_temp[level_valid, level] ** 2)
+            np.add.at(bulk_n_obs[level], (li, lo), 1)
+            np.add.at(
+                bulk_n_valid_levels_sum[level],
+                (li, lo),
+                bulk_n_valid[level_valid, level].astype(np.float64),
+            )
 
-        li = lat_idx[level_valid]
-        lo = lon_idx[level_valid]
-        np.add.at(bulk_sum_iwc[level], (li, lo), bulk_iwc[level_valid, level])
-        np.add.at(bulk_sq_iwc[level], (li, lo), bulk_iwc[level_valid, level] ** 2)
-        np.add.at(bulk_sum_height[level], (li, lo), bulk_height[level_valid, level])
-        np.add.at(bulk_sq_height[level], (li, lo), bulk_height[level_valid, level] ** 2)
-        np.add.at(bulk_sum_temp[level], (li, lo), bulk_temp[level_valid, level])
-        np.add.at(bulk_sq_temp[level], (li, lo), bulk_temp[level_valid, level] ** 2)
-        np.add.at(bulk_n_obs[level], (li, lo), 1)
-        np.add.at(
-            bulk_n_valid_levels_sum[level],
-            (li, lo),
-            bulk_n_valid[level_valid, level].astype(np.float64),
-        )
+        z_valid = np.isfinite(bulk_z[:, level])
+        if np.any(z_valid):
+            li = lat_idx[z_valid]
+            lo = lon_idx[z_valid]
+            np.add.at(bulk_sum_z[level], (li, lo), bulk_z[z_valid, level])
+            np.add.at(bulk_sq_z[level], (li, lo), bulk_z[z_valid, level] ** 2)
+            np.add.at(bulk_n_z[level], (li, lo), 1)
+
+        ext_valid = np.isfinite(bulk_ext[:, level])
+        if np.any(ext_valid):
+            li = lat_idx[ext_valid]
+            lo = lon_idx[ext_valid]
+            np.add.at(bulk_sum_ext[level], (li, lo), bulk_ext[ext_valid, level])
+            np.add.at(bulk_sq_ext[level], (li, lo), bulk_ext[ext_valid, level] ** 2)
+            np.add.at(bulk_n_ext[level], (li, lo), 1)
 
     top_iwc_mean, top_iwc_std = _stats_from_sum(top_sum_iwc, top_sq_iwc, top_n_obs)
     top_height_mean, top_height_std = _stats_from_sum(top_sum_height, top_sq_height, top_n_obs)
@@ -588,6 +635,8 @@ def bin_cloud_bulk_latlon(
     bulk_n_valid_levels_mean = np.full(shape3d, np.nan, dtype=np.float32)
     bulk_z_mean = np.full(shape3d, np.nan, dtype=np.float32)
     bulk_z_std = np.full(shape3d, np.nan, dtype=np.float32)
+    bulk_ext_mean = np.full(shape3d, np.nan, dtype=np.float32)
+    bulk_ext_std = np.full(shape3d, np.nan, dtype=np.float32)
 
     for level in range(n_bulk):
         bulk_iwc_mean[level], bulk_iwc_std[level] = _stats_from_sum(
@@ -604,7 +653,10 @@ def bin_cloud_bulk_latlon(
             bulk_n_valid_levels_sum[level, valid] / bulk_n_obs[level, valid]
         ).astype(np.float32)
         bulk_z_mean[level], bulk_z_std[level] = _stats_from_sum(
-            bulk_sum_z[level], bulk_sq_z[level], bulk_n_obs[level]
+            bulk_sum_z[level], bulk_sq_z[level], bulk_n_z[level]
+        )
+        bulk_ext_mean[level], bulk_ext_std[level] = _stats_from_sum(
+            bulk_sum_ext[level], bulk_sq_ext[level], bulk_n_ext[level]
         )
 
     valid_time = ~np.isnat(rounded_mean_time)
@@ -654,6 +706,15 @@ def bin_cloud_bulk_latlon(
     bulk_z_mean_4d = scatter_3d_to_4d_by_time(
         bulk_z_mean, rounded_mean_time, time_values, fill_value=np.float32(np.nan)
     )
+    bulk_z_std_4d = scatter_3d_to_4d_by_time(
+        bulk_z_std, rounded_mean_time, time_values, fill_value=np.float32(np.nan)
+    )
+    bulk_ext_mean_4d = scatter_3d_to_4d_by_time(
+        bulk_ext_mean, rounded_mean_time, time_values, fill_value=np.float32(np.nan)
+    )
+    bulk_ext_std_4d = scatter_3d_to_4d_by_time(
+        bulk_ext_std, rounded_mean_time, time_values, fill_value=np.float32(np.nan)
+    )
 
     epoch_units = "seconds since 1970-01-01 00:00:00"
     time_bin_sec = time_values.astype("datetime64[s]").astype(np.int64)
@@ -679,6 +740,10 @@ def bin_cloud_bulk_latlon(
             "cb_height_std": (("time_bin", "bulk_level", "lat_bin", "lon_bin"), bulk_height_std_4d),
             "cb_temp_mean": (("time_bin", "bulk_level", "lat_bin", "lon_bin"), bulk_temp_mean_4d),
             "cb_temp_std": (("time_bin", "bulk_level", "lat_bin", "lon_bin"), bulk_temp_std_4d),
+            "cb_Z_mean": (("time_bin", "bulk_level", "lat_bin", "lon_bin"), bulk_z_mean_4d),
+            "cb_Z_std": (("time_bin", "bulk_level", "lat_bin", "lon_bin"), bulk_z_std_4d),
+            "cb_extinction_mean": (("time_bin", "bulk_level", "lat_bin", "lon_bin"), bulk_ext_mean_4d),
+            "cb_extinction_std": (("time_bin", "bulk_level", "lat_bin", "lon_bin"), bulk_ext_std_4d),
             "cb_n_obs": (("time_bin", "bulk_level", "lat_bin", "lon_bin"), bulk_n_obs_4d),
             "cb_n_valid_levels": (("time_bin", "bulk_level", "lat_bin", "lon_bin"), bulk_n_valid_levels_4d),
             "rounded_mean_time": (("lat_bin", "lon_bin"), rounded_mean_time_sec.astype(np.int32)),
@@ -802,6 +867,10 @@ def bin_cloud_bulk_latlon(
         ("cb_height_std", "Standard deviation of cloud-bulk layer height", "km"),
         ("cb_temp_mean", "Mean cloud-bulk layer temperature", "K"),
         ("cb_temp_std", "Standard deviation of cloud-bulk layer temperature", "K"),
+        ("cb_Z_mean", "Mean cloud-bulk radar reflectivity", "dBZ"),
+        ("cb_Z_std", "Standard deviation of cloud-bulk radar reflectivity", "dBZ"),
+        ("cb_extinction_mean", "Mean cloud-bulk extinction", "m-1"),
+        ("cb_extinction_std", "Standard deviation of cloud-bulk extinction", "m-1"),
     ]:
         out[name].attrs.update(
             {
@@ -846,11 +915,14 @@ def bin_cloud_bulk_latlon(
 
     out.attrs.update(
         {
-            "title": "Binned cloud-bulk IWC, height, temperature, and cloud-top phase statistics",
+            "title": "Binned cloud-bulk IWC, height, temperature, radar reflectivity, extinction, and cloud-top phase statistics",
             "summary": "DARDAR-CLOUD cloud-top and cloud-bulk statistics aggregated to regular lat/lon bins and mapped to 15-minute time bins.",
             "Conventions": "CF-1.10",
             "featureType": "grid",
-            "source": "Binned from DARDAR-CLOUD iwc/temperature and DARMASK_Simplified_Categorization",
+            "source": (
+                "Binned from DARDAR-CLOUD iwc/temperature/Z/extinction and "
+                "DARMASK_Simplified_Categorization"
+            ),
             "history": "Created by dardar_cloud_bulk_binning.py",
             "lat_spacing_degrees": float(dlat),
             "lon_spacing_degrees": float(dlon),
@@ -1111,7 +1183,7 @@ def process_multiple_days(
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Bin DARDAR-CLOUD cloud-top and cloud-bulk IWC, height, and temperature "
+            "Bin DARDAR-CLOUD cloud-top and cloud-bulk IWC, height, temperature, Z, and extinction "
             "statistics onto a regular lon-lat grid and write DD_CB_YYYYMMDD_HHMM.nc outputs."
         )
     )
