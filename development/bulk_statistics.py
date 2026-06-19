@@ -42,8 +42,12 @@ def _identify_times_to_process(row):
 loader = ChunkLoader([ANALYSIS_YEAR],config=config)
 cloud_data = loader.glac_chunk
 cloud_data["val_seviri_coincidence"] = cloud_data.apply(_get_val_seviri_coincidence,axis=1)
-valid_clouds = cloud_data[cloud_data["val_seviri_coincidence"]==True]
-valid_clouds["colocation_time"]=valid_clouds.apply(_identify_times_to_process, axis=1)
+valid_clouds = cloud_data.loc[cloud_data["val_seviri_coincidence"] == True].copy()
+valid_clouds["colocation_time"] = valid_clouds.apply(_identify_times_to_process, axis=1)
+
+# These are the columns/information belonging to the original valid cloud.
+# Save this before adding bulk-derived columns like iwc_bulk_means, lat_bin_idx, etc.
+ORIGINAL_VALID_CLOUD_COLUMNS = valid_clouds.columns.tolist()
 
 row_temp = valid_clouds.iloc[1]
 # for col_time in row["colocation_time"]:
@@ -83,30 +87,127 @@ def get_colocation_ind(row):
         lon_idx_list.append(lon_idx[valid])
     return lat_idx_list,lon_idx_list
 # col_time = row["colocation_time"][0]
+
+
 def get_bulk_values(row):
-    cb_iwc_means  = []
+    cb_iwc_means = []
     ct_iwc_means = []
+
+    cb_height_means = []
+    ct_height_means = []
+    ct_temp_means = []
+
+    cb_temp_means = []
+    cb_Z_means = []
+    cb_ext_means = []
+
+    bulk_offset_top_m = None
+    bulk_offset_bottom_m = None
+    bulk_offset_mid_m = None
+
     for i in range(len(row["colocation_time"])):
         col_time = row["colocation_time"][i]
         dt = pd.Timestamp(col_time)
         time_str = dt.strftime("%Y%m%d_%H%M")
 
-        # path = f"/nfs/ch4/wolke_scratch/dnikolo/dump/dardar-cloud_cb/"
-        path = os.path.join(CB_data_path,f"DD_CB_{time_str}.nc")
+        path = os.path.join(CB_data_path, f"DD_CB_{time_str}.nc")
         print(path)
-        ds = xr.open_dataset(path)
-        cb_iwc_values = ds["cb_iwc_mean"].isel(
-            lat_bin=xr.DataArray(row["lat_bin_idx"][i], dims="pixel"),
-            lon_bin=xr.DataArray(row["lon_bin_idx"][i], dims="pixel"),
-            )
-        ct_iwc_values = ds["cb_top_iwc_mean"].isel(
-            lat_bin=xr.DataArray(row["lat_bin_idx"][i], dims="pixel"),
-            lon_bin=xr.DataArray(row["lon_bin_idx"][i], dims="pixel"),
-        )
-        cb_iwc_means.append(cb_iwc_values.mean(axis=2)[0])
-        ct_iwc_means.append(float(ct_iwc_values.mean(axis=1).isel(time_bin=0).values))
-    return cb_iwc_means, ct_iwc_means
 
+        with xr.open_dataset(path) as ds:
+            if bulk_offset_top_m is None:
+                bulk_offset_top_m = ds["bulk_level_offset_top"].values.astype(float)
+                bulk_offset_bottom_m = ds["bulk_level_offset_bottom"].values.astype(float)
+                bulk_offset_mid_m = 0.5 * (bulk_offset_top_m + bulk_offset_bottom_m)
+
+            lat_idx = xr.DataArray(row["lat_bin_idx"][i], dims="pixel")
+            lon_idx = xr.DataArray(row["lon_bin_idx"][i], dims="pixel")
+
+            cb_iwc_values = ds["cb_iwc_mean"].isel(
+                lat_bin=lat_idx,
+                lon_bin=lon_idx,
+            )
+            ct_iwc_values = ds["cb_top_iwc_mean"].isel(
+                lat_bin=lat_idx,
+                lon_bin=lon_idx,
+            )
+            cb_height_values = ds["cb_height_mean"].isel(
+                lat_bin=lat_idx,
+                lon_bin=lon_idx,
+            )
+            ct_height_values = ds["cb_top_height_mean"].isel(
+                lat_bin=lat_idx,
+                lon_bin=lon_idx,
+            )
+            ct_temp_values = ds["cb_top_temp_mean"].isel(
+                lat_bin=lat_idx,
+                lon_bin=lon_idx,
+            )
+            cb_temp_values = ds["cb_temp_mean"].isel(
+                lat_bin=lat_idx,
+                lon_bin=lon_idx,
+            )
+            cb_ext_values = ds["cb_extinction_mean"].isel(
+                lat_bin=lat_idx,
+                lon_bin=lon_idx,
+            )
+            cb_Z_values = ds["cb_Z_mean"].isel(
+                lat_bin=lat_idx,
+                lon_bin=lon_idx,
+            )
+
+
+            cb_iwc_profile = cb_iwc_values.mean(dim="pixel").isel(time_bin=0).values
+            cb_height_profile = cb_height_values.mean(dim="pixel").isel(time_bin=0).values
+
+            ct_iwc_mean = float(ct_iwc_values.mean(dim="pixel").isel(time_bin=0).values)
+            ct_height_mean = float(ct_height_values.mean(dim="pixel").isel(time_bin=0).values)
+            ct_temp_mean = float(ct_temp_values.mean(dim="pixel").isel(time_bin=0).values)
+
+            cb_iwc_means.append(cb_iwc_profile)
+            ct_iwc_means.append(ct_iwc_mean)
+
+            cb_height_means.append(cb_height_profile)
+            ct_height_means.append(ct_height_mean)
+            ct_temp_means.append(ct_temp_mean)
+
+            cb_ext_means.append(cb_ext_values)
+            cb_temp_means.append(cb_temp_values)
+            cb_Z_means.append(cb_Z_values)
+    return (
+        cb_iwc_means,
+        ct_iwc_means,
+        cb_height_means,
+        ct_height_means,
+        ct_temp_means,
+        cb_ext_means,
+        cb_temp_means,
+        cb_Z_means,
+        bulk_offset_top_m,
+        bulk_offset_bottom_m,
+        bulk_offset_mid_m,
+    )
+
+def make_parquet_safe(value):
+    """
+    Convert values that often cause issues in parquet object columns
+    into safer Python-native representations.
+    """
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+
+    if isinstance(value, pd.DatetimeIndex):
+        return value.astype(str).tolist()
+
+    if isinstance(value, pd.Timestamp):
+        return value
+
+    if isinstance(value, list):
+        return [
+            v.tolist() if isinstance(v, np.ndarray) else v
+            for v in value
+        ]
+
+    return value
 
 def extract_iwc_relative_to_peak(row):
     records = []
@@ -114,26 +215,42 @@ def extract_iwc_relative_to_peak(row):
     track_start = pd.Timestamp(row["track_start_time"])
     peak_ind = int(row["Glac_peak_ind"])
 
+    # Save all original valid_clouds information for this cloud
+    original_cloud_info = {
+        col: make_parquet_safe(row[col])
+        for col in ORIGINAL_VALID_CLOUD_COLUMNS
+    }
+
     for i, iwc_profile in enumerate(row["iwc_bulk_means"]):
         col_time = pd.Timestamp(row["colocation_time"][i])
-        iwc_ct = row["iwc_top_means"]
 
-        # Index of the colocation time within the cloud track
         col_ind = int(round((col_time - track_start).total_seconds() / (15 * 60)))
-
-        # Time index relative to the ice-fraction peak
         rel_ind = col_ind - peak_ind
 
-        records.append({
+        record = {
             "Cloud_ID": row["Cloud_ID"],
             "rel_ind": rel_ind,
             "rel_time_min": rel_ind * 15,
+            "absolute_colocation_time": col_time,
+
             "iwc_profile": np.asarray(iwc_profile),
-            "iwc_ct": iwc_ct
-        })
+            "iwc_ct": row["iwc_top_means"][i],
+
+            "bulk_height_profile_m": np.asarray(row["bulk_height_means_m"][i]),
+            "cloud_top_height_m": row["ddc_cloud_top_height_means_m"][i],
+            "cloud_top_temp_K": row["ddc_cloud_top_temp_means_K"][i],
+
+            "bulk_level_offset_top_m": np.asarray(row["bulk_level_offset_top_m"]),
+            "bulk_level_offset_bottom_m": np.asarray(row["bulk_level_offset_bottom_m"]),
+            "bulk_level_offset_mid_m": np.asarray(row["bulk_level_offset_mid_m"]),
+        }
+
+        # Add the full original cloud information to this individual record
+        record.update(original_cloud_info)
+
+        records.append(record)
 
     return records
-
 
     
 valid_clouds[["lat_bin_idx", "lon_bin_idx"]] = (
@@ -141,8 +258,21 @@ valid_clouds[["lat_bin_idx", "lon_bin_idx"]] = (
     .apply(get_colocation_ind, axis=1, result_type="expand")
 )
 
-valid_clouds[["iwc_bulk_means","iwc_top_means"]] = (valid_clouds.apply(get_bulk_values, axis=1, result_type="expand"))
-
+valid_clouds[
+    [
+        "iwc_bulk_means",
+        "iwc_top_means",
+        "bulk_height_means_m",
+        "ddc_cloud_top_height_means_m",
+        "ddc_cloud_top_temp_means_K",
+        "ext_bulk_means",
+        "temp_bulk_means",
+        "Z_bulk_means",
+        "bulk_level_offset_top_m",
+        "bulk_level_offset_bottom_m",
+        "bulk_level_offset_mid_m",
+    ]
+] = valid_clouds.apply(get_bulk_values, axis=1, result_type="expand")
 
 all_records = []
 
@@ -152,14 +282,77 @@ for _, row in valid_clouds.iterrows():
 iwc_rel_df = pd.DataFrame(all_records)
 iwc_stats_by_rel_time = (
     iwc_rel_df
-    .groupby("rel_ind")["iwc_profile"]
+    .groupby("rel_ind")
     .agg(
-        n_hits="count",
-        mean_iwc_profile=lambda profiles: np.nanmean(np.stack(profiles), axis=0),
+        n_hits=("iwc_profile", "count"),
+
+        mean_iwc_profile=(
+            "iwc_profile",
+            lambda profiles: np.nanmean(np.stack(profiles), axis=0),
+        ),
+
+        mean_bulk_height_profile_m=(
+            "bulk_height_profile_m",
+            lambda profiles: np.nanmean(np.stack(profiles), axis=0),
+        ),
+
+        bulk_offset_top_m=(
+            "bulk_level_offset_top_m",
+            lambda profiles: np.nanmean(np.stack(profiles), axis=0),
+        ),
+
+        bulk_offset_bottom_m=(
+            "bulk_level_offset_bottom_m",
+            lambda profiles: np.nanmean(np.stack(profiles), axis=0),
+        ),
+
+        dd_cth=(
+            "cloud_top_height_m",
+            "mean",
+        ),
+
+        sev_cth=(
+            "avg_cth",
+            "mean",
+        ),
+
+        dd_ctt=(
+            "cloud_top_temp_K",
+            "mean",
+        ),
+
+        mean_iwc_ct=(
+            "iwc_ct",
+            "mean",
+        ),
+
+        sev_ctt=(
+            "avg_ctt",
+            "mean",
+        ),
+        
+        mean_area_km=(
+            "avg_size[km]",
+            "mean",
+        ),
+        
     )
     .reset_index()
 )
 iwc_stats_by_rel_time["rel_time_min"] = iwc_stats_by_rel_time["rel_ind"] * 15
 
-iwc_rel_df.to_parquet(f"iwc_rel_df_V3_1_{ANALYSIS_YEAR}.parquet")
-iwc_stats_by_rel_time.to_parquet(f"mean_iwc_by_height_data_V3_1_{ANALYSIS_YEAR}.parquet")
+iwc_stats_by_rel_time["rel_time_min"] = iwc_stats_by_rel_time["rel_ind"] * 15
+stats_out_fp = os.path.join(OUTPUT_FOLDER, "Bulk_statistics")
+os.makedirs(stats_out_fp, exist_ok=True)
+
+iwc_rel_df.to_parquet(
+    os.path.join(stats_out_fp, f"iwc_rel_df_V3_1_{ANALYSIS_YEAR}.parquet")
+)
+
+iwc_stats_by_rel_time.to_parquet(
+    os.path.join(stats_out_fp, f"mean_iwc_by_height_data_V3_1_{ANALYSIS_YEAR}.parquet")
+)
+
+valid_clouds.to_parquet(
+    os.path.join(stats_out_fp, f"glaciations_with_bulk_data_V3_1_{ANALYSIS_YEAR}.parquet")
+)

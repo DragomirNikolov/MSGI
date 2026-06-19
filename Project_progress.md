@@ -52,8 +52,13 @@ After glaciation peaks, there is a drop in ice fraction. We suspect that this is
 
 #### Done
 
-I have the code to extract the below-cloud-top data at the relevant locations, as well as the locations of the colocated pixels for one year.
+I have the code to extract the below-cloud-top data at the relevant locations, as well as the locations of the colocated pixels for one year (2007). The data shows that there is a peak of IWC at the timestep after glaciation. Depending on the version of DARDAR-CLOUD I use the peak appears at diffetent depths:
+    - Between 840 and 960 m if we use DARDAR-CLOUD 3.0 with Brown and Francis modified mass-size relationship (the one that was used in version 2); https://doi.org/10.25326/450
+    - Around 1200 to 1500 m if we use DARDAR-CLOUD 3.1 with Heymfield’s composite mass-size relationship; https://doi.org/10.25326/449
+The two versions are identical except for the used mass-size relationship. The Heymfield relation is supposed to perform better for concentrations of IWC below 0.1 g/m^3 (C. Listowski, 2020, https://doi.org/10.1029/2020GL088785). The concentrations that we observe are at the order of 0.05 g/m^3 so the results from 3.1 should be more accurate.
 
+
+On the importance of the mass size relationship https://amt.copernicus.org/articles/12/2819/2019/
 #### To-do
 
 Perform a statistical analysis to prove or disprove whether sedimentation or an increase in WBF below the cloud top explains the observed decrease in ice fraction.
