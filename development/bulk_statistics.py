@@ -158,21 +158,25 @@ def get_bulk_values(row):
 
             cb_iwc_profile = cb_iwc_values.mean(dim="pixel").isel(time_bin=0).values
             cb_height_profile = cb_height_values.mean(dim="pixel").isel(time_bin=0).values
+            cb_ext_profile = cb_ext_values.mean(dim="pixel").isel(time_bin=0).values
+            cb_Z_profile = cb_Z_values.mean(dim="pixel").isel(time_bin=0).values
+            cb_temp_profile = cb_temp_values.mean(dim="pixel").isel(time_bin=0).values
 
             ct_iwc_mean = float(ct_iwc_values.mean(dim="pixel").isel(time_bin=0).values)
             ct_height_mean = float(ct_height_values.mean(dim="pixel").isel(time_bin=0).values)
             ct_temp_mean = float(ct_temp_values.mean(dim="pixel").isel(time_bin=0).values)
 
             cb_iwc_means.append(cb_iwc_profile)
-            ct_iwc_means.append(ct_iwc_mean)
-
             cb_height_means.append(cb_height_profile)
+            cb_ext_means.append(cb_ext_profile)
+            cb_temp_means.append(cb_temp_profile)
+            cb_Z_means.append(cb_Z_profile)
+
+            ct_iwc_means.append(ct_iwc_mean)
             ct_height_means.append(ct_height_mean)
             ct_temp_means.append(ct_temp_mean)
 
-            cb_ext_means.append(cb_ext_values)
-            cb_temp_means.append(cb_temp_values)
-            cb_Z_means.append(cb_Z_values)
+            
     return (
         cb_iwc_means,
         ct_iwc_means,
