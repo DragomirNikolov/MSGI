@@ -18,15 +18,15 @@ OUTPUT_FOLDER=config["postprocessing_output_dir"]
 
 TRACKING_PARQUET = Path(os.path.join(OUTPUT_FOLDER,"Final_results", f"{ANALYSIS_YEAR}_glac_04.parquet"))
 DARDAR_CLOUD_ROOT = Path("/wolke_scratch/dnikolo/DARDAR_data/DARDAR-CLOUD/V3_1")
-TRACKING_OUTPUT_DIR = Path(os.path.join("/wolke_scratch/dnikolo/DARDAR_data/CB_data",f"{ANALYSIS_YEAR}"))
-TRACKING_ALLOWED_CTH_DEV_M = 1000.0
-TRACKING_LAT_MIN = -81.0
-TRACKING_LAT_MAX = 81.0
-TRACKING_DLON = 0.3
-TRACKING_DLAT = 0.3
-TRACKING_LON_MIN = -81.0
-TRACKING_LON_MAX = 81.0
-TRACKING_N_WORKERS = 6
+OUTPUT_DIR = Path(os.path.join("/wolke_scratch/dnikolo/DARDAR_data/CB_data",f"{ANALYSIS_YEAR}"))
+ALLOWED_CTH_DEV_M = 1000.0
+LAT_MIN = -81.0
+LAT_MAX = 81.0
+DLON = 0.3
+DLAT = 0.3
+LON_MIN = -81.0
+LON_MAX = 81.0
+N_WORKERS = 6
 
 ALLOWED_CTH_DEV=1000
 
@@ -57,7 +57,7 @@ def _identify_times_to_process(row):
 
 def load_relevant_tracking_times(
     tracking_parquet: Path = TRACKING_PARQUET,
-    allowed_cth_dev_m: float = TRACKING_ALLOWED_CTH_DEV_M,
+    allowed_cth_dev_m: float = ALLOWED_CTH_DEV_M,
 ) -> pd.DatetimeIndex:
     """Reproduce the tracked-cloud relevant-time selection from development/3d_dardar_tracking.py."""
     cloud_data = pd.read_parquet(tracking_parquet)
@@ -147,8 +147,8 @@ def _process_file_star(task):
 def process_tracking_selected_dardar_bulk(
     tracking_parquet: Path = TRACKING_PARQUET,
     dardar_root: Path = DARDAR_CLOUD_ROOT,
-    output_dir: Path = TRACKING_OUTPUT_DIR,
-    n_workers: int = TRACKING_N_WORKERS,
+    output_dir: Path = OUTPUT_DIR,
+    n_workers: int = N_WORKERS,
 ) -> None:
     """Run cloud-bulk analysis only for DARDAR files matching tracked relevant times."""
     relevant_times = load_relevant_tracking_times(tracking_parquet)
@@ -176,12 +176,12 @@ def process_tracking_selected_dardar_bulk(
         (
             in_file,
             temp_output_dir,
-            TRACKING_LAT_MIN,
-            TRACKING_LAT_MAX,
-            TRACKING_DLAT,
-            TRACKING_LON_MIN,
-            TRACKING_LON_MAX,
-            TRACKING_DLON,
+            LAT_MIN,
+            LAT_MAX,
+            DLAT,
+            LON_MIN,
+            LON_MAX,
+            DLON,
             file_ind,
         )
         for file_ind, (in_file, matched_time_bins_ns) in enumerate(selected_files)
