@@ -155,11 +155,17 @@ def get_bulk_values(row):
                 lon_bin=lon_idx,
             )
 
+            cb_Z_dBZe_values = xr.where(cb_Z_values > 0.0, 10.0 * np.log10(cb_Z_values), np.nan)
 
             cb_iwc_profile = cb_iwc_values.mean(dim="pixel").isel(time_bin=0).values
             cb_height_profile = cb_height_values.mean(dim="pixel").isel(time_bin=0).values
             cb_ext_profile = cb_ext_values.mean(dim="pixel").isel(time_bin=0).values
-            cb_Z_profile = cb_Z_values.mean(dim="pixel").isel(time_bin=0).values
+            cb_Z_profile = (
+                cb_Z_dBZe_values
+                .mean(dim="pixel", skipna=True)
+                .isel(time_bin=0)
+                .values
+            )
             cb_temp_profile = cb_temp_values.mean(dim="pixel").isel(time_bin=0).values
 
             ct_iwc_mean = float(ct_iwc_values.mean(dim="pixel").isel(time_bin=0).values)

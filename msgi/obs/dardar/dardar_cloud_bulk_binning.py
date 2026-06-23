@@ -330,9 +330,9 @@ def extract_cloud_bulk_profiles(ds: xr.Dataset) -> xr.Dataset:
                 bulk_iwc[row, level] = np.float32(np.nanmean(iwc_vals[finite]))
                 bulk_height[row, level] = np.float32(np.nanmean(height_m[valid_pair_idx][finite]) / 1000.0)
                 bulk_temp[row, level] = np.float32(np.nanmean(temp[row, valid_pair_idx][finite]))
-        
+            
             Z_vals = Z[row, valid_pair_idx]
-            Z_finite = np.isfinite(Z_vals)
+            Z_finite = np.isfinite(Z_vals) & (Z_vals > 0.0)
             if np.any(Z_finite):
                 bulk_Z[row, level] = np.float32(np.nanmean(10*np.log10(Z_vals[Z_finite])))
 
