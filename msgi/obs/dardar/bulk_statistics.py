@@ -11,7 +11,7 @@ ANALYSIS_YEAR=config["start_time"].year
 OUTPUT_FOLDER=config["postprocessing_output_dir"]
 CB_data_path = f"/nfs/ch4/wolke_scratch/dnikolo/DARDAR_data/CB_data/{ANALYSIS_YEAR}"
 # CB_data_path = "/nfs/ch4/wolke_scratch/dnikolo/dump/dardar-cloud_cb"
-
+CONVERT_LINEAR_Z_TO_DBZE = True
 
 def _check_val_seviri_coincidence(row):
     points_of_interest = row["val_cth_hist"] > 0
@@ -70,6 +70,13 @@ dlon = lon_bins[1] - lon_bins[0]
 
 nlat = len(lat_bins)
 nlon = len(lon_bins)
+
+
+
+
+def _to_dBZe(linear_z):
+    positive_z = linear_z.where(linear_z > 0.0)
+    return 10.0 * np.log10(positive_z)
 
 
 def get_colocation_ind(row):
@@ -155,13 +162,14 @@ def get_bulk_values(row):
                 lon_bin=lon_idx,
             )
 
-            cb_Z_dBZe_values = xr.where(cb_Z_values > 0.0, 10.0 * np.log10(cb_Z_values), np.nan)
+            if CONVERT_LINEAR_Z_TO_DBZE:
+                cb_Z_values = _to_dBZe(cb_Z_values)
 
             cb_iwc_profile = cb_iwc_values.mean(dim="pixel").isel(time_bin=0).values
             cb_height_profile = cb_height_values.mean(dim="pixel").isel(time_bin=0).values
             cb_ext_profile = cb_ext_values.mean(dim="pixel").isel(time_bin=0).values
             cb_Z_profile = (
-                cb_Z_dBZe_values
+                cb_Z_values
                 .mean(dim="pixel", skipna=True)
                 .isel(time_bin=0)
                 .values
