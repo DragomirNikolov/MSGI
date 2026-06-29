@@ -18,12 +18,12 @@ OUTPUT_FOLDER=config["postprocessing_output_dir"]
 
 TRACKING_PARQUET = Path(os.path.join(OUTPUT_FOLDER,"Final_results", f"{ANALYSIS_YEAR}_glac_04.parquet"))
 DARDAR_CLOUD_ROOT = Path("/wolke_scratch/dnikolo/DARDAR_data/DARDAR-CLOUD/V3_1")
-OUTPUT_DIR = Path(os.path.join("/wolke_scratch/dnikolo/DARDAR_data/CB_data",f"{ANALYSIS_YEAR}"))
+OUTPUT_DIR = Path(os.path.join("/wolke_scratch/dnikolo/DARDAR_data/CB_02",f"{ANALYSIS_YEAR}"))
 ALLOWED_CTH_DEV_M = 1000.0
 LAT_MIN = -81.0
 LAT_MAX = 81.0
-DLON = 0.3
-DLAT = 0.3
+DLON = 0.2
+DLAT = 0.2
 LON_MIN = -81.0
 LON_MAX = 81.0
 N_WORKERS = 12
