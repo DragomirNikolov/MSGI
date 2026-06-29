@@ -49,7 +49,10 @@ valid_clouds["colocation_time"] = valid_clouds.apply(_identify_times_to_process,
 # Save this before adding bulk-derived columns like iwc_bulk_means, lat_bin_idx, etc.
 ORIGINAL_VALID_CLOUD_COLUMNS = valid_clouds.columns.tolist()
 
-row_temp = valid_clouds.iloc[1]
+i=0
+row_temp = valid_clouds.iloc[0]
+while np.isempty(row_temp["colocation_time"]):
+    row_temp=valid_clouds.iloc[ind]
 # for col_time in row["colocation_time"]:
 col_time = row_temp["colocation_time"][0]
 dt = pd.Timestamp(col_time)
