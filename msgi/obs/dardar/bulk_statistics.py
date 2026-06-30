@@ -51,7 +51,7 @@ ORIGINAL_VALID_CLOUD_COLUMNS = valid_clouds.columns.tolist()
 
 i=0
 row_temp = valid_clouds.iloc[0]
-while np.isempty(row_temp["colocation_time"]):
+while row_temp["colocation_time"].size==0:
     row_temp=valid_clouds.iloc[ind]
 # for col_time in row["colocation_time"]:
 col_time = row_temp["colocation_time"][0]
