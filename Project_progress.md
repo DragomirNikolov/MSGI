@@ -57,8 +57,10 @@ I have the code to extract the below-cloud-top data at the relevant locations, a
     - Around 1200 to 1500 m if we use DARDAR-CLOUD 3.1 with Heymfield’s composite mass-size relationship; https://doi.org/10.25326/449
 The two versions are identical except for the used mass-size relationship. The Heymfield relation is supposed to perform better for concentrations of IWC below 0.1 g/m^3 (C. Listowski, 2020, https://doi.org/10.1029/2020GL088785). The concentrations that we observe are at the order of 0.05 g/m^3 so the results from 3.1 should be more accurate.
 
+On the importance of the mass size relationship see https://amt.copernicus.org/articles/12/2819/2019/
 
-On the importance of the mass size relationship https://amt.copernicus.org/articles/12/2819/2019/
+Since the update above we moved to direct CLOUDSAT radar reflectivity measurements. 
+
 #### To-do
 
 Perform a statistical analysis to prove or disprove whether sedimentation or an increase in WBF below the cloud top explains the observed decrease in ice fraction.
