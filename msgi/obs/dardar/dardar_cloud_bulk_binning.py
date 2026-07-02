@@ -324,10 +324,10 @@ def extract_cloud_bulk_profiles(ds: xr.Dataset) -> xr.Dataset:
             valid_pair_idx=pair
 
             iwc_vals = iwc[row, valid_pair_idx]
-            finite = np.isfinite(iwc_vals)
+            finite = np.isfinite(iwc_vals) & (iwc_vals > 0.0)
             bulk_n_valid[row, level] = np.int16(np.count_nonzero(finite))
             if bulk_n_valid[row, level] > 0:
-                bulk_iwc[row, level] = np.float32(np.nanmean(iwc_vals[finite]))
+                bulk_iwc[row, level] = np.float32(np.nanmean(10* np.log10(iwc_vals[finite])))
                 bulk_height[row, level] = np.float32(np.nanmean(height_m[valid_pair_idx][finite]) / 1000.0)
                 bulk_temp[row, level] = np.float32(np.nanmean(temp[row, valid_pair_idx][finite]))
             
@@ -405,7 +405,7 @@ def extract_cloud_bulk_profiles(ds: xr.Dataset) -> xr.Dataset:
             "units": "m",
         }
     )
-    out["cb_iwc"].attrs.update({"long_name": "Cloud-bulk IWC", "units": "kg m-3"})
+    out["cb_iwc"].attrs.update({"long_name": "Cloud-bulk IWC", "units": "10*log_10(kg m-3)"})
     out["cb_height_km"].attrs.update({"long_name": "Cloud-bulk layer height", "units": "km"})
     out["cb_temp_k"].attrs.update({"long_name": "Cloud-bulk layer temperature", "units": "K"})
     out["cb_Z"].attrs.update({"long_name": "Cloud-bulk radar reflectivity", "units": Z_var.attrs.get("units", "dBZ")})

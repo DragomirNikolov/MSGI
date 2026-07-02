@@ -122,7 +122,18 @@ def get_bulk_values(row):
 
         path = os.path.join(CB_data_path, f"DD_CB_{time_str}.nc")
         print(path)
+        if not os.path.exists(path):
+            missing_profile = np.full(18, np.nan)
+            cb_iwc_means.append(missing_profile.copy())
+            cb_height_means.append(missing_profile.copy())
+            cb_ext_means.append(missing_profile.copy())
+            cb_temp_means.append(missing_profile.copy())
+            cb_Z_means.append(missing_profile.copy())
 
+            ct_iwc_means.append(np.nan)
+            ct_height_means.append(np.nan)
+            ct_temp_means.append(np.nan)
+            continue
         with xr.open_dataset(path) as ds:
             if bulk_offset_top_m is None:
                 bulk_offset_top_m = ds["bulk_level_offset_top"].values.astype(float)
