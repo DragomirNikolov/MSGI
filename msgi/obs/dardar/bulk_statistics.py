@@ -125,18 +125,18 @@ def get_bulk_values(row):
         if not os.path.exists(path):
             print(f"Error: skipping {path}")
             if len(cb_iwc_means)>=1:
-                missing_profile = np.full(cb_iwc_means[-1].shape, np.nan)
+                missing_profile = np.full(cb_iwc_means[-1].shape, np.nan, dtype=np.float32)
             else:
-                missing_profile = np.full((18,), np.nan)
+                missing_profile = np.full((18,), np.nan, dtype=np.float32)
             cb_iwc_means.append(missing_profile.copy())
             cb_height_means.append(missing_profile.copy())
             cb_ext_means.append(missing_profile.copy())
             cb_temp_means.append(missing_profile.copy())
             cb_Z_means.append(missing_profile.copy())
 
-            ct_iwc_means.append(np.nan)
-            ct_height_means.append(np.nan)
-            ct_temp_means.append(np.nan)
+            ct_iwc_means.append(np.float32(np.nan))
+            ct_height_means.append(np.float32(np.nan))
+            ct_temp_means.append(np.float32(np.nan))
             if bulk_offset_top_m is None:
                 bulk_offset_top_m = missing_profile.copy()
                 bulk_offset_bottom_m = missing_profile.copy()
@@ -144,12 +144,12 @@ def get_bulk_values(row):
             continue
         with xr.open_dataset(path,decode_times=False) as ds:
             if (bulk_offset_top_m is None):
-                bulk_offset_top_m = ds["bulk_level_offset_top"].values.astype(float)
-                bulk_offset_bottom_m = ds["bulk_level_offset_bottom"].values.astype(float)
+                bulk_offset_top_m = ds["bulk_level_offset_top"].values.astype(np.float32)
+                bulk_offset_bottom_m = ds["bulk_level_offset_bottom"].values.astype(np.float32)
                 bulk_offset_mid_m = 0.5 * (bulk_offset_top_m + bulk_offset_bottom_m)
             elif np.isnan(bulk_offset_top_m).all():
-                bulk_offset_top_m = ds["bulk_level_offset_top"].values.astype(float)
-                bulk_offset_bottom_m = ds["bulk_level_offset_bottom"].values.astype(float)
+                bulk_offset_top_m = ds["bulk_level_offset_top"].values.astype(np.float32)
+                bulk_offset_bottom_m = ds["bulk_level_offset_bottom"].values.astype(np.float32)
                 bulk_offset_mid_m = 0.5 * (bulk_offset_top_m + bulk_offset_bottom_m)
             lat_idx = xr.DataArray(row["lat_bin_idx"][i], dims="pixel")
             lon_idx = xr.DataArray(row["lon_bin_idx"][i], dims="pixel")
@@ -387,6 +387,10 @@ iwc_stats_by_rel_time["rel_time_min"] = iwc_stats_by_rel_time["rel_ind"] * 15
 stats_out_fp = os.path.join(OUTPUT_FOLDER, "Bulk_statistics")
 os.makedirs(stats_out_fp, exist_ok=True)
 
+valid_clouds.to_parquet(
+    os.path.join(stats_out_fp, f"glaciations_with_bulk_data_V3_1_{ANALYSIS_YEAR}.parquet")
+)
+
 iwc_rel_df.to_parquet(
     os.path.join(stats_out_fp, f"iwc_rel_df_V3_1_{ANALYSIS_YEAR}.parquet")
 )
@@ -395,6 +399,3 @@ iwc_stats_by_rel_time.to_parquet(
     os.path.join(stats_out_fp, f"mean_iwc_by_height_data_V3_1_{ANALYSIS_YEAR}.parquet")
 )
 
-valid_clouds.to_parquet(
-    os.path.join(stats_out_fp, f"glaciations_with_bulk_data_V3_1_{ANALYSIS_YEAR}.parquet")
-)
