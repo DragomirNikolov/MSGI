@@ -127,7 +127,7 @@ def get_bulk_values(row):
             if len(cb_iwc_means)>=1:
                 missing_profile = np.full(cb_iwc_means[-1].shape, np.nan)
             else:
-                missing_profile = np.full((18,1), np.nan)
+                missing_profile = np.full((18,), np.nan)
             cb_iwc_means.append(missing_profile.copy())
             cb_height_means.append(missing_profile.copy())
             cb_ext_means.append(missing_profile.copy())
@@ -137,13 +137,20 @@ def get_bulk_values(row):
             ct_iwc_means.append(np.nan)
             ct_height_means.append(np.nan)
             ct_temp_means.append(np.nan)
+            if bulk_offset_top_m is None:
+                bulk_offset_top_m = missing_profile.copy()
+                bulk_offset_bottom_m = missing_profile.copy()
+                bulk_offset_mid_m = 0.5 * (bulk_offset_top_m + bulk_offset_bottom_m)
             continue
         with xr.open_dataset(path,decode_times=False) as ds:
-            if bulk_offset_top_m is None:
+            if (bulk_offset_top_m is None):
                 bulk_offset_top_m = ds["bulk_level_offset_top"].values.astype(float)
                 bulk_offset_bottom_m = ds["bulk_level_offset_bottom"].values.astype(float)
                 bulk_offset_mid_m = 0.5 * (bulk_offset_top_m + bulk_offset_bottom_m)
-
+            elif np.isnan(bulk_offset_top_m).all():
+                bulk_offset_top_m = ds["bulk_level_offset_top"].values.astype(float)
+                bulk_offset_bottom_m = ds["bulk_level_offset_bottom"].values.astype(float)
+                bulk_offset_mid_m = 0.5 * (bulk_offset_top_m + bulk_offset_bottom_m)
             lat_idx = xr.DataArray(row["lat_bin_idx"][i], dims="pixel")
             lon_idx = xr.DataArray(row["lon_bin_idx"][i], dims="pixel")
 
