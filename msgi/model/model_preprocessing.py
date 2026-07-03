@@ -349,14 +349,17 @@ def resample_dir_files(gte_config,msgi_config):
     for in_file in input_files:
         base = os.path.basename(in_file)
         if grid_type=="latlon":
+            setgrid_file=None
             for method in remap_methods:
                 weights_file = msgi_config.get(
                     f"{method}_weights_file",
                     os.path.join(aux_dir, f"{method}_2d_1.5x1.5_weights.nc"),
                 )
                 out_file = os.path.join(output_dir, f"remap_{method}_whole_{base}")
-                tasks.append((in_file, out_file, weights_file,grid_file, method))
+                tasks.append((in_file, out_file, setgrid_file, weights_file,grid_file, method))
         elif grid_type=="geostationary":
+            setgrid_files = {"np":"/nfs/ch4/wolke_scratch/dnikolo/Glaciation_time_estimator/grids/grid_np_agg.txt",
+                             "sp":"/nfs/ch4/wolke_scratch/dnikolo/Glaciation_time_estimator/grids/grid_sp_agg.txt"}
             for method in remap_methods:
                 weights_files = msgi_config.get(
                         f"{method}_weights_file",
@@ -366,10 +369,11 @@ def resample_dir_files(gte_config,msgi_config):
                     weights_file = weights_files[pole]
                     grid_file=grid_files[pole]
                     out_file = os.path.join(output_dir, f"remap_{method}_{pole}_{base}")
-                    tasks.append((in_file, out_file, weights_file,grid_file, method))
+                    setgrid_file= setgrid_files[pole]
+                    tasks.append((in_file, out_file,setgrid_file, weights_file,grid_file, method))
     if grid_type=="latlon":
         def _run_one(task):
-            in_file, out_file, weights_file,grid_file, method = task
+            in_file, out_file, setgrid_file, weights_file,grid_file, method = task
             cmd = [
                 "cdo",
                 "-P",
@@ -382,12 +386,12 @@ def resample_dir_files(gte_config,msgi_config):
             return method, out_file
     elif grid_type=="geostationary":
         def _run_one(task):
-            in_file, out_file, weights_file,grid_file, method = task
+            in_file, out_file, setgrid_file, weights_file,grid_file, method = task
             cmd = [
                 "cdo",
                 "-P",
                 str(cdo_threads),
-                f"-setgrid,/nfs/ch4/wolke_scratch/dnikolo/Glaciation_time_estimator/grids/grid_np_agg.txt",f"-remap,{grid_file},{weights_file}",
+                f"-setgrid,{setgrid_file}",f"-remap,{grid_file},{weights_file}",
                 # "-setctomiss,0",
                 in_file,
                 out_file,
