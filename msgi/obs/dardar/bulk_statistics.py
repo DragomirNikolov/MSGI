@@ -123,8 +123,8 @@ def get_bulk_values(row):
         path = os.path.join(CB_data_path, f"DD_CB_{time_str}.nc")
         print(path)
         if not os.path.exists(path):
-            if len(cb_iwc_profile>=1):
-                missing_profile = np.full(cb_iwc_profile[-1].shape, np.nan)
+            if len(cb_iwc_means>=1):
+                missing_profile = np.full(cb_iwc_means[-1].shape, np.nan)
             else:
                 missing_profile = np.full((18,1), np.nan)
             cb_iwc_means.append(missing_profile.copy())
