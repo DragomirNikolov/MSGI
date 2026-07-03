@@ -123,7 +123,10 @@ def get_bulk_values(row):
         path = os.path.join(CB_data_path, f"DD_CB_{time_str}.nc")
         print(path)
         if not os.path.exists(path):
-            missing_profile = np.full(18, np.nan)
+            if len(cb_iwc_profile>=1):
+                missing_profile = np.full(cb_iwc_profile[-1].shape, np.nan)
+            else:
+                missing_profile = np.full((18,1), np.nan)
             cb_iwc_means.append(missing_profile.copy())
             cb_height_means.append(missing_profile.copy())
             cb_ext_means.append(missing_profile.copy())
@@ -204,7 +207,6 @@ def get_bulk_values(row):
             ct_height_means.append(ct_height_mean)
             ct_temp_means.append(ct_temp_mean)
 
-            
     return (
         cb_iwc_means,
         ct_iwc_means,
