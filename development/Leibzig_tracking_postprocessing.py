@@ -6,6 +6,7 @@ import scipy.io
 import os
 from glaciation_time_estimator.auxiliary_func.config_reader import read_config
 from glaciation_time_estimator.data_postprocessing.Tracking_result_analysis import save_single_temp_range_results
+from glaciation_time_estimator.data_postprocessing.Single_cloud_analysis import Cloud
 # You need this import from your project
 # from glaciation_time_estimator.data_postprocessing.Single_cloud_analysis import Cloud
 
