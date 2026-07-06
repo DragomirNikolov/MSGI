@@ -3,7 +3,10 @@ from  glaciation_time_estimator.data_postprocessing.Extract_glaciations import e
 import pandas as pd
 import os
 if __name__=="__main__":
+    
     config = read_config()
+    global global_rmse
+    global_rmse = config["Global_sqrt_mse"]
     parquet_dir = os.path.join(
             config["postprocessing_output_dir"],
             "Leibzig_data",
