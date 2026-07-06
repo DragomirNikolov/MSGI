@@ -40,53 +40,53 @@ def find_date_folder(day_dir: Path, day: int) -> Path | None:
 
 
 def analyse_traj_file(traj_data):
-        n_trajs = traj_data["trajectories"].shape[1]
-        n_clouds = 0
-        for traj_nr in range(n_trajs):
-                n_clouds+=traj_data["trajectories"][0,traj_nr]["clouds"][0,0].shape[0]
-        cloud_arr = np.empty((n_clouds),dtype=Cloud)
-        idx=0
-        print(n_trajs)
-        print(n_clouds)
-        for traj_nr in range(n_trajs):
-                traj_time = traj_data["trajectories"][0,traj_nr]["times"][0,0][0]
-                flat_time = np.concatenate(traj_time)
-                times = pd.to_datetime(flat_time, format="%Y%m%d%H%M")
-                traj_cloud_count = traj_data["trajectories"][0,traj_nr]["clouds"][0,0].shape[0]
-                for cloud_nr in range(traj_cloud_count):
-                        cloud_arr[idx] = Cloud(idx, False,1)
-                        data = traj_data["trajectories"][0,traj_nr]["clouds"][0,0][cloud_nr,0]["data"]
-                        cloud_values = data["cph"][0]
-                        cot = data["cot"][0]
-                        ctp = data["ctp"][0]
-                        ctt = data["ctt"][0]
-                        pix_area = data["pixel_area"][0]
-                        for i in range(pix_area.shape[0]):
-                                # print(i)
-                                lat = np.full(ctt[i].shape,fill_value=30)
-                                lon = np.full(ctt[i].shape,fill_value=30)
-                                if pix_area[i].sum()<1000:
-                                        cloud_arr[idx]=None
-                                        break
-                                mean_ctt = np.average(ctt[i], weights=pix_area[i].T)
-                                if (mean_ctt>=273.15) or (mean_ctt<=273.15-36):
-                                        cloud_arr[idx]=None
-                                        break
-                                cloud_arr[idx].update_status( times[i], cloud_values[i],cot[i],ctp[i],ctt[i],cloud_lat=lat,cloud_lon=lon,pixel_area_non_agg=pix_area[i].T,pixel_area_agg=pix_area[i].T)
-
-                        idx+=1
-        for i, cloud in enumerate(cloud_arr):
-                if cloud == None:
-                        continue
-                # Check if the cloud is in the mixed phase
-                temp_check = ((np.array(cloud.mean_ctt_list)>273.15-38) & (np.array(cloud.mean_ctt_list)<273.15)).all()
-                # Large enough for comparison
-                size_check = (np.array(cloud.cloud_size_km_list)>1000).all()
-                # Lived long enough
-                time_check = len(cloud.cloud_size_km_list)>=4
-                if not (temp_check and size_check and time_check):
-                        cloud_arr[i]=None
-                cloud_arr = cloud_arr[cloud_arr!=None]
+    n_trajs = traj_data["trajectories"].shape[1]
+    n_clouds = 0
+    for traj_nr in range(n_trajs):
+            n_clouds+=traj_data["trajectories"][0,traj_nr]["clouds"][0,0].shape[0]
+    cloud_arr = np.empty((n_clouds),dtype=Cloud)
+    idx=0
+    print(n_trajs)
+    print(n_clouds)
+    for traj_nr in range(n_trajs):
+        traj_time = traj_data["trajectories"][0,traj_nr]["times"][0,0][0]
+        flat_time = np.concatenate(traj_time)
+        times = pd.to_datetime(flat_time, format="%Y%m%d%H%M")
+        traj_cloud_count = traj_data["trajectories"][0,traj_nr]["clouds"][0,0].shape[0]
+        for cloud_nr in range(traj_cloud_count):
+            cloud_arr[idx] = Cloud(idx, False,1)
+            data = traj_data["trajectories"][0,traj_nr]["clouds"][0,0][cloud_nr,0]["data"]
+            cloud_values = data["cph"][0]
+            cot = data["cot"][0]
+            ctp = data["ctp"][0]
+            ctt = data["ctt"][0]
+            pix_area = data["pixel_area"][0]
+            for i in range(pix_area.shape[0]):
+                    # print(i)
+                    lat = np.full(ctt[i].shape,fill_value=30)
+                    lon = np.full(ctt[i].shape,fill_value=30)
+                    if pix_area[i].sum()<1000:
+                            cloud_arr[idx]=None
+                            break
+                    mean_ctt = np.average(ctt[i], weights=pix_area[i].T)
+                    if (mean_ctt>=273.15) or (mean_ctt<=273.15-36):
+                            cloud_arr[idx]=None
+                            break
+                    cloud_arr[idx].update_status( times[i], cloud_values[i],cot[i],ctp[i],ctt[i],cloud_lat=lat,cloud_lon=lon,pixel_area_non_agg=pix_area[i].T,pixel_area_agg=pix_area[i].T)
+            idx+=1
+    for i, cloud in enumerate(cloud_arr):
+        if cloud == None:
+                continue
+        # Check if the cloud is in the mixed phase
+        temp_check = ((np.array(cloud.mean_ctt_list)>273.15-38) & (np.array(cloud.mean_ctt_list)<273.15)).all()
+        # Large enough for comparison
+        size_check = (np.array(cloud.cloud_size_km_list)>1000).all()
+        # Lived long enough
+        time_check = len(cloud.cloud_size_km_list)>=4
+        if not (temp_check and size_check and time_check):
+                    cloud_arr[i]=None
+    cloud_arr = cloud_arr[cloud_arr!=None]
+    return cloud_arr
 
 
 def load_and_analyse_traj_range(start_date, end_date, base_dir=BASE_TRAJ_DIR):
