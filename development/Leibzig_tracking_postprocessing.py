@@ -46,8 +46,6 @@ def analyse_traj_file(traj_data):
             n_clouds+=traj_data["trajectories"][0,traj_nr]["clouds"][0,0].shape[0]
     cloud_arr = np.empty((n_clouds),dtype=Cloud)
     idx=0
-    print(n_trajs)
-    print(n_clouds)
     for traj_nr in range(n_trajs):
         traj_time = traj_data["trajectories"][0,traj_nr]["times"][0,0][0]
         flat_time = np.concatenate(traj_time)
@@ -89,31 +87,53 @@ def analyse_traj_file(traj_data):
     return cloud_arr
 
 
-def load_and_analyse_traj_range(start_date, end_date, base_dir=BASE_TRAJ_DIR):
+def analyse_single_file_worker(traj_file):
     """
-    Load all trajectory files between start_date and end_date inclusive.
+    Worker function.
 
-    Parameters
-    ----------
-    start_date, end_date : str or pandas-compatible datetime
-        Example: "2015-07-03", "2015-07-05"
-
-    base_dir : Path
-        Base directory containing year/month folders.
-
-    Returns
-    -------
-    all_clouds : np.ndarray
-        Array of valid Cloud objects from all trajectory files.
+    Each process loads and analyses exactly one trajectory file.
+    This function must be top-level so that multiprocessing can pickle it.
     """
+    traj_file = Path(traj_file)
 
+    try:
+        print(f"Loading {traj_file}", flush=True)
+
+        traj_data = scipy.io.loadmat(traj_file)
+        cloud_arr = analyse_traj_file(traj_data)
+
+        return {
+            "file": str(traj_file),
+            "success": True,
+            "clouds": cloud_arr,
+            "n_clouds": len(cloud_arr),
+            "error": None,
+            "traceback": None,
+        }
+
+    except Exception as e:
+        return {
+            "file": str(traj_file),
+            "success": False,
+            "clouds": np.array([], dtype=object),
+            "n_clouds": 0,
+            "error": str(e),
+            "traceback": traceback.format_exc(),
+        }
+
+
+def collect_traj_files(start_date, end_date, base_dir=BASE_TRAJ_DIR):
+    """
+    Collect all trajectory files between start_date and end_date inclusive.
+    """
     start_date = pd.Timestamp(start_date)
     end_date = pd.Timestamp(end_date)
 
-    all_clouds = []
+    all_traj_files = []
 
     for date in pd.date_range(start_date, end_date, freq="D"):
         print(date)
+
         year = f"{date.year:04d}"
         month = f"{date.month:02d}"
         day = f"{date.day:02d}"
@@ -132,32 +152,97 @@ def load_and_analyse_traj_range(start_date, end_date, base_dir=BASE_TRAJ_DIR):
             print(f"WARNING: no trajectory files found for {date.date()} in {date_folder}")
             continue
 
-        print(f"\nDate {date.date()}: found {len(traj_files)} files")
+        print(f"Date {date.date()}: found {len(traj_files)} files")
 
-        for traj_file in traj_files:
-            print(f"Loading {traj_file}")
+        all_traj_files.extend(traj_files)
 
-            try:
-                traj_data = scipy.io.loadmat(traj_file)
-                cloud_arr = analyse_traj_file(traj_data)
+    return all_traj_files
 
-                if len(cloud_arr) > 0:
-                    all_clouds.append(cloud_arr)
 
-            except Exception as e:
-                print(f"ERROR while processing {traj_file}: {e}")
-                continue
+def load_and_analyse_traj_range(
+    start_date,
+    end_date,
+    base_dir=BASE_TRAJ_DIR,
+    n_workers=None,
+):
+    """
+    Load all trajectory files between start_date and end_date inclusive.
+
+    Files are processed in parallel.
+    Each file is loaded and analysed inside a single worker process.
+    """
+
+    traj_files = collect_traj_files(start_date, end_date, base_dir=base_dir)
+
+    if len(traj_files) == 0:
+        print("No trajectory files found.")
+        return np.array([], dtype=object)
+
+    if n_workers is None:
+        # Conservative default for HPC / shared filesystem
+        n_workers = min(os.cpu_count() or 1, len(traj_files), 8)
+
+    print(f"\nProcessing {len(traj_files)} files with {n_workers} workers\n")
+
+    all_clouds = []
+    failed_files = []
+
+    with ProcessPoolExecutor(max_workers=n_workers) as executor:
+        futures = {
+            executor.submit(analyse_single_file_worker, traj_file): traj_file
+            for traj_file in traj_files
+        }
+
+        for future in as_completed(futures):
+            result = future.result()
+
+            if result["success"]:
+                print(
+                    f"DONE {result['file']} | valid clouds: {result['n_clouds']}",
+                    flush=True,
+                )
+
+                if result["n_clouds"] > 0:
+                    all_clouds.append(result["clouds"])
+
+            else:
+                print(
+                    f"ERROR while processing {result['file']}: {result['error']}",
+                    flush=True,
+                )
+                failed_files.append(result)
+
+    print(f"\nFinished processing.")
+    print(f"Successful files with clouds: {len(all_clouds)}")
+    print(f"Failed files: {len(failed_files)}")
+
+    if len(failed_files) > 0:
+        print("\nFailed file list:")
+        for fail in failed_files:
+            print(f"  {fail['file']}")
+            print(f"    {fail['error']}")
 
     if len(all_clouds) == 0:
         return np.array([], dtype=object)
 
     return np.concatenate(all_clouds)
 
-if __name__=="__main__":
-    config=read_config()
-    all_clouds = load_and_analyse_traj_range(config["start_time"],config["end_time"])
-    output_dir= os.path.join(
-            config['postprocessing_output_dir'], "Leibzig_data",
-            config['time_folder_name']
-        )
-    save_single_temp_range_results(all_clouds,output_dir,config)
+
+if __name__ == "__main__":
+    config = read_config()
+
+    n_workers = config.get("n_workers", None)
+
+    all_clouds = load_and_analyse_traj_range(
+        config["start_time"],
+        config["end_time"],
+        n_workers=n_workers,
+    )
+
+    output_dir = os.path.join(
+        config["postprocessing_output_dir"],
+        "Leibzig_data",
+        config["time_folder_name"],
+    )
+
+    save_single_temp_range_results(all_clouds, output_dir, config)
