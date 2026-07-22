@@ -50,17 +50,44 @@ def float_time_to_datetime(t):
 
 def convert_time_coord(da):
     """
-    Convert float time coordinate (YYYYMMDD + fractional day)
-    to datetime64[m], matching your existing logic.
+    Convert time coordinate to datetime64[ns].
+
+    Handles:
+    1. ICON-style float time: YYYYMMDD + fractional day
+    2. CESM/cftime time: cftime.DatetimeNoLeap objects already decoded by xarray
+    3. Already-valid numpy/pandas datetime values
     """
-    t = da["time"].values.astype(float)
-    ymd = np.floor(t).astype(int)
-    frac = t - ymd
-    base = pd.to_datetime(ymd.astype(str), format="%Y%m%d")
-    dt = (
-        (base + pd.to_timedelta(frac, unit="D")).to_numpy(dtype="datetime64[ns]")
-        + np.timedelta64(30, "s")
-    ).astype("datetime64[m]").astype("datetime64[ns]")
+    time_vals = da["time"].values
+
+    # Case 1: already datetime64
+    if np.issubdtype(time_vals.dtype, np.datetime64):
+        dt = time_vals.astype("datetime64[ns]")
+
+    # Case 2: numeric ICON-style YYYYMMDD.fraction
+    elif np.issubdtype(time_vals.dtype, np.number):
+        t = time_vals.astype(float)
+        ymd = np.floor(t).astype(int)
+        frac = t - ymd
+
+        base = pd.to_datetime(ymd.astype(str), format="%Y%m%d")
+        dt = (
+            (base + pd.to_timedelta(frac, unit="D")).to_numpy(dtype="datetime64[ns]")
+            + np.timedelta64(30, "s")
+        ).astype("datetime64[m]").astype("datetime64[ns]")
+
+    # Case 3: cftime objects, e.g. CESM no-leap calendar
+    else:
+        dt = np.array(
+            [
+                np.datetime64(
+                    f"{t.year:04d}-{t.month:02d}-{t.day:02d}T"
+                    f"{t.hour:02d}:{t.minute:02d}:{t.second:02d}"
+                )
+                for t in time_vals
+            ],
+            dtype="datetime64[ns]",
+        )
+
     return da.assign_coords(time=("time", dt))
 
 def prepare_split_datasets(ds):
@@ -114,6 +141,8 @@ def split_dir_files(gte_config, msgi_config):
     grid_type = msgi_config.get("grid_type","")
     poles = msgi_config.get("poles", ["np","sp"])
     experiment_name = msgi_config["experiment_name"]
+    model = msgi_config.get("model", "ICON")
+    var_name_dict = {"ACTP": "ctp","ACTT": "ctt"}
     if base_dir is None:
         base_dir=gte_config["CLAAS_fp"]
         print(f"preprocessing_output_dir is not included in msgi_config. Fallback to gte_config[CLAAS_fp]={base_dir}")
@@ -124,9 +153,9 @@ def split_dir_files(gte_config, msgi_config):
         filtered_base_dir = os.path.join(base_dir, "Filtered_Data")
         resampled_base_dir = os.path.join(base_dir, "Resampled_Data")
 
-    # ---- variables you want in the mixed-range output ----
+    # ---- variables you want in the mixed-temp-range output ----
     # Replace these with the actual variable names from your dataset
-    mixed_var_names = msgi_config["mixed_vars"]
+    mixed_var_names = msgi_config["additional_vars"]
     twc_threshold = msgi_config["twc_threshold"]
     tag = f"Agg_{gte_config['agg_fact']:02}"
 
@@ -137,14 +166,30 @@ def split_dir_files(gte_config, msgi_config):
     start_date = gte_config["start_time"].replace(hour=0, minute=0, second=0, microsecond=0)
     end_date = gte_config["end_time"].replace(hour=0, minute=0, second=0, microsecond=0)
 
-    def extract_file_date(filepath):
-        """Extract datetime from filename."""
-        basename = os.path.basename(filepath)
-        match = re.search(r"(\d{8}T\d{6}Z)", basename)
-        if not match:
-            return None
-        return datetime.strptime(match.group(1), "%Y%m%dT%H%M%SZ")
-    
+    if model == "ICON":
+        def extract_file_date(filepath):
+            """Extract datetime from filename."""
+            basename = os.path.basename(filepath)
+            match = re.search(r"(\d{8}T\d{6}Z)", basename)
+            if not match:
+                return None
+            return datetime.strptime(match.group(1), "%Y%m%dT%H%M%SZ")
+    if model == "CESM":
+        def extract_file_date(filepath):
+            """Extract datetime from CESM filename."""
+            basename = os.path.basename(filepath)
+
+            match = re.search(r"(\d{4})-(\d{2})-(\d{2})-(\d{5})\.nc$", basename)
+            if not match:
+                return None
+
+            year, month, day, seconds = match.groups()
+            return datetime(
+                int(year),
+                int(month),
+                int(day),
+            ) + timedelta(seconds=int(seconds))
+
     for file in os.listdir(folder_path):
         if grid_type=="latlon":
             if file.startswith(f"remap_laf_whole_{experiment_name}"):
@@ -166,17 +211,25 @@ def split_dir_files(gte_config, msgi_config):
             if file_path is None:
                 continue
         else:
-            raise ValueError("")
+            raise ValueError("grid_type should be either latlon or geostationary")
         data = xr.open_dataset(file_path, chunks={"time": 1})
         if grid_type=="latlon":
             data = lat_lon_filter(data)
 
         # Load variables
-        CPH = data["cph"]
-        CTT = data["ctt"]
+        if model == "ICON":
+            CPH = data["cph"]
+            CTT = data["ctt"]
+        
+        if model == "CESM":
+            CPH = data["ACT_ITMF"]
+            CTT = data["ACTT"]
 
-        # Extra variables for the mixed-range files
-        mixed_vars = [data[v] for v in mixed_var_names]
+        
+        
+
+        # Extra variables for the mixed-temp-range files
+        additional_vars = [data[v] for v in mixed_var_names]
 
         print(f"Processing file: {file} with shape: {CPH.shape}")
 
@@ -190,25 +243,27 @@ def split_dir_files(gte_config, msgi_config):
         for T_range in T_ranges:
             T_min, T_max = T_range
             CTT_mask = (CTT >= T_min) & (CTT < T_max)
-
-            CPH_results.append(CPH.where(CTT_mask, other=0))
+            if model == "ICON": 
+                CPH_results.append(CPH.where(CTT_mask, other=0))
+            if model =="CESM":
+                CPH_results.append((CPH+1).where(CTT_mask, other=0))
 
         # ---------------------------------------------------------------
-        # 2) New mixed-range output (single mask, one file per time)
+        # 2) New mixed-temp-range output (single mask, one file per time)
         # ---------------------------------------------------------------
         mixed_mask = (CTT >= T_min_mixed) & (CTT < T_max_mixed)
         if "twc" in data.data_vars:
             mixed_mask = mixed_mask & (data["twc"] >= twc_threshold)
-        mixed_results = [var.where(mixed_mask, other=0) for var in mixed_vars]
+        mixed_results = [var.where(mixed_mask, other=0) for var in additional_vars]
         # If yiu want celcius
-        # for i in range(len(mixed_vars)):
+        # for i in range(len(additional_vars)):
         #     if (mixed_var_names[i]).lower() != "ctt":
-        #         mixed_results.append(mixed_vars[i].where(mixed_mask, other=0))
+        #         mixed_results.append(additional_vars[i].where(mixed_mask, other=0))
         #     else:
-        #         mixed_results.append(mixed_vars[i].where(mixed_mask-273.15, other=np.nan))
+        #         mixed_results.append(additional_vars[i].where(mixed_mask-273.15, other=np.nan))
 
         with ProgressBar(dt=15.0):
-             CPH_output, mixed_output = dask.compute(
+            CPH_output, mixed_output = dask.compute(
                 CPH_results,
                 mixed_results
             )
@@ -251,13 +306,16 @@ def split_dir_files(gte_config, msgi_config):
             xr.save_mfdataset(new_data_list, paths)
 
         # ---------------------------------------------------------------
-        # Write new mixed-range files (one file per timestep)
+        # Write new mixed-temp-range files (one file per timestep)
         # ---------------------------------------------------------------
         mixed_ds = xr.Dataset()
 
         for var_name, var_da in zip(mixed_var_names, mixed_output):
             # optional: rename to indicate filtering
-            out_name = f"{var_name}_resampled"
+            if model == "ICON":
+                out_name = f"{var_name}_resampled"
+            if model == "CESM":
+                out_name = f"{var_name_dict[var_name]}_resampled"
 
             mixed_ds[out_name] = convert_time_coord(var_da).rename(out_name)
 
@@ -286,6 +344,7 @@ def resample_dir_files(gte_config,msgi_config):
     grid_type = msgi_config.get("grid_type","")
     aux_dir = msgi_config.get("cdo_aux_dir", "/wolke_scratch/dnikolo/ICON_Data/aux_tools")
     poles = msgi_config.get("poles", ["np","sp"])
+    model = msgi_config.get("model", "ICON")
     if grid_type=="latlon":
         grid_file = msgi_config.get("cdo_grid_file", os.path.join(aux_dir, "grid_1.5x1.5.txt"))
     elif grid_type=="geostationary":
@@ -300,22 +359,38 @@ def resample_dir_files(gte_config,msgi_config):
 
     cdo_threads = int(msgi_config.get("cdo_threads", 8))
     workers = int(msgi_config.get("resample_workers", max(1, (os.cpu_count() or 2) // 2)))
-
-    input_files = sorted(glob.glob(os.path.join(input_dir, "*_ctp_2d*")))
+    if model == "ICON":
+        input_files = sorted(glob.glob(os.path.join(input_dir, "*_ctp_2d*")))
+    if model == "CESM":
+        input_files = sorted(glob.glob(os.path.join(input_dir, "*cam.h1*")))
     if experiment_name:
         input_files = [
             f for f in input_files
             if os.path.basename(f).startswith(experiment_name) and f.endswith(".nc")
         ]
+    if model == "ICON":
+        def extract_file_date(filepath):
+            """Extract datetime from filename."""
+            basename = os.path.basename(filepath)
+            match = re.search(r"(\d{8}T\d{6}Z)", basename)
+            if not match:
+                return None
+            return datetime.strptime(match.group(1), "%Y%m%dT%H%M%SZ")
+    if model == "CESM":
+        def extract_file_date(filepath):
+            """Extract datetime from CESM filename."""
+            basename = os.path.basename(filepath)
 
-    def extract_file_date(filepath):
-        """Extract datetime from filename."""
-        basename = os.path.basename(filepath)
-        match = re.search(r"(\d{8}T\d{6}Z)", basename)
-        if not match:
-            return None
-        return datetime.strptime(match.group(1), "%Y%m%dT%H%M%SZ")
+            match = re.search(r"(\d{4})-(\d{2})-(\d{2})-(\d{5})\.nc$", basename)
+            if not match:
+                return None
 
+            year, month, day, seconds = match.groups()
+            return datetime(
+                int(year),
+                int(month),
+                int(day),
+            ) + timedelta(seconds=int(seconds))
     start_date = gte_config["start_time"].replace(hour=0, minute=0, second=0, microsecond=0)
     end_date = gte_config["end_time"].replace(hour=0, minute=0, second=0, microsecond=0)
 
@@ -385,19 +460,35 @@ def resample_dir_files(gte_config,msgi_config):
             subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
             return method, out_file
     elif grid_type=="geostationary":
-        def _run_one(task):
-            in_file, out_file, setgrid_file, weights_file,grid_file, method = task
-            cmd = [
-                "cdo",
-                "-P",
-                str(cdo_threads),
-                f"-setgrid,{setgrid_file}",f"-remap,{grid_file},{weights_file}",
-                # "-setctomiss,0",
-                in_file,
-                out_file,
-            ]
-            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
-            return method, out_file
+        if model == "ICON":
+            def _run_one(task):
+                in_file, out_file, setgrid_file, weights_file,grid_file, method = task
+                cmd = [
+                    "cdo",
+                    "-P",
+                    str(cdo_threads),
+                    f"-setgrid,{setgrid_file}",f"-remap,{grid_file},{weights_file}",
+                    # "-setctomiss,0",
+                    in_file,
+                    out_file,
+                ]
+                subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+                return method, out_file
+        if model == "CESM":
+            def _run_one(task):
+                in_file, out_file, setgrid_file, weights_file,grid_file, method = task
+                cmd = [
+                    "cdo",
+                    "-P",
+                    str(cdo_threads),
+                    f"-setgrid,{setgrid_file}",f"-remap,{grid_file},{weights_file}",
+                    "-selvar,ACT_ITMF,ACTT,ACTP",
+                    # "-setctomiss,0",
+                    in_file,
+                    out_file,
+                ]
+                subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+                return method, out_file
     max_workers = max(1, min(workers, len(tasks)))
     failures = []
     with ThreadPoolExecutor(max_workers=max_workers) as pool:

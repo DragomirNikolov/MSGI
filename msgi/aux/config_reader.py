@@ -8,8 +8,9 @@ import yaml
 REQUIRED_KEYS = {
     "resample_input_dir",
     "twc_threshold",
-    "mixed_vars",
-    "grid_type"
+    "additional_vars",
+    "grid_type",
+    "model"
 }
 
 VALID_RESAMPLING_METHODS = {"laf", "dis"}
@@ -48,15 +49,15 @@ def _validate_config(config: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(twc_threshold, (int, float)):
         raise ValueError("'twc_threshold' must be a numeric value.")
 
-    mixed_vars = config["mixed_vars"]
-    if not isinstance(mixed_vars, list) or not mixed_vars:
-        raise ValueError("'mixed_vars' must be a non-empty list of variable names.")
-    if not all(isinstance(v, str) and v.strip() for v in mixed_vars):
-        raise ValueError("All entries in 'mixed_vars' must be non-empty strings.")
+    additional_vars = config["additional_vars"]
+    if not isinstance(additional_vars, list) or not additional_vars:
+        raise ValueError("'additional_vars' must be a non-empty list of variable names.")
+    if not all(isinstance(v, str) and v.strip() for v in additional_vars):
+        raise ValueError("All entries in 'additional_vars' must be non-empty strings.")
     
     grid_type = config["grid_type"]
     allowed_types = ("latlon","geostationary")
-    if not (grid_type in allowed_types) or not mixed_vars:
+    if not (grid_type in allowed_types) or not additional_vars:
         raise ValueError(f"'grid_type' must be one of the following {allowed_types}")
 
     optional_string_keys = [
