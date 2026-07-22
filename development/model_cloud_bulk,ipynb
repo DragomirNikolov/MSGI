@@ -1,0 +1,43 @@
+import numpy as np
+import xarray as xr
+
+ctmask_3d = (
+    ct["ctmask"]
+    .expand_dims(height=atm_3d.height)
+    .broadcast_like(atm_3d["cli"])
+    .transpose("time", "height", "ncells")
+)
+CPH = xr.where(((ctmask_3d>1e-5) & ((atm_3d["cli"]+atm_3d["clw"])>=1e-5)),(atm_3d["cli"]/(atm_3d["cli"]+atm_3d["clw"])+1),0)
+
+# ctlev is probably 1-based because height is 1..47
+# Convert model level number to zero-based positional index
+ctlev_idx = ct["ctlev"].astype(float)
+
+rel_level = xr.DataArray(
+    np.arange(4),
+    dims="rel_level",
+    coords={"rel_level": np.arange(4)}
+)
+
+# cloud top + 1/2/3 levels below
+target_idx = ctlev_idx + rel_level
+nlev = atm_3d.sizes["height"]
+
+valid = (
+    np.isfinite(target_idx) &
+    (target_idx >= 0) &
+    (target_idx < nlev)
+)
+
+target_idx_safe = (
+    target_idx
+    .where(valid, 0)
+    .astype(int)
+)
+
+CPH_ct_profile = (
+    CPH
+    .isel(height=target_idx_safe)
+    .where(valid, other=0)
+    .transpose("time", "rel_level", "ncells")
+)
