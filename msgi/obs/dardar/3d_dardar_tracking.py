@@ -35,14 +35,17 @@ def _check_val_seviri_coincidence(row):
     points_of_interest = row["val_cth_hist"] > 0
     if type(row["cth_hist"]) == float:
             N+=1
-            return np.nan 
-    cth_deviations = np.abs(row["cth_hist"][points_of_interest] - row["val_cth_hist"][points_of_interest])
-    if cth_deviations.size == 0:
-        return False
-    mean_height_dev = cth_deviations.mean()  
-    if mean_height_dev > ALLOWED_CTH_DEV:
+            return False 
+    if points_of_interest.sum()==0:
         return False
     return True
+    # cth_deviations = np.abs(row["cth_hist"][points_of_interest] - row["val_cth_hist"][points_of_interest])
+    # # if cth_deviations.size == 0:
+    # #     return False
+    # mean_height_dev = cth_deviations.mean()  
+    # if mean_height_dev > ALLOWED_CTH_DEV:
+    #     return False
+    # return True
 
 def _get_val_seviri_coincidence(row):
     if "val_seviri_coincidence" not in row.keys():
