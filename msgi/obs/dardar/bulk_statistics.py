@@ -13,16 +13,25 @@ CB_data_path = f"/wolke_scratch/dnikolo/DARDAR_data/CB_02/{ANALYSIS_YEAR}"
 # CB_data_path = "/wolke_scratch/dnikolo/dump/dardar-cloud_cb"
 CONVERT_LINEAR_Z_TO_DBZE = False
 
+# def _check_val_seviri_coincidence(row):
+#     points_of_interest = row["val_cth_hist"] > 0
+#     if type(row["cth_hist"]) == float:
+#             # N+=1
+#             return False
+#     cth_deviations = np.abs(row["cth_hist"][points_of_interest] - row["val_cth_hist"][points_of_interest])
+#     if cth_deviations.size == 0:
+#         return False
+#     mean_height_dev = cth_deviations.mean()  
+#     if mean_height_dev > ALLOWED_CTH_DEV:
+#         return False
+#     return True
+
 def _check_val_seviri_coincidence(row):
     points_of_interest = row["val_cth_hist"] > 0
     if type(row["cth_hist"]) == float:
             # N+=1
-            return np.nan 
-    cth_deviations = np.abs(row["cth_hist"][points_of_interest] - row["val_cth_hist"][points_of_interest])
-    if cth_deviations.size == 0:
-        return False
-    mean_height_dev = cth_deviations.mean()  
-    if mean_height_dev > ALLOWED_CTH_DEV:
+            return False 
+    if points_of_interest.sum()==0:
         return False
     return True
 
@@ -110,6 +119,7 @@ def get_bulk_values(row):
     cb_temp_means = []
     cb_Z_means = []
     cb_ext_means = []
+    cb_cph_means = []
 
     bulk_offset_top_m = None
     bulk_offset_bottom_m = None
@@ -133,6 +143,7 @@ def get_bulk_values(row):
             cb_ext_means.append(missing_profile.copy())
             cb_temp_means.append(missing_profile.copy())
             cb_Z_means.append(missing_profile.copy())
+            cb_cph_means.append(missing_profile.copy())
 
             ct_iwc_means.append(np.float32(np.nan))
             ct_height_means.append(np.float32(np.nan))
@@ -200,6 +211,14 @@ def get_bulk_values(row):
                 .values
             )
             cb_temp_profile = cb_temp_values.mean(dim="pixel").isel(time_bin=0).values
+            if "cb_cph_mean" in ds:
+                cb_cph_values = ds["cb_cph_mean"].isel(
+                    lat_bin=lat_idx,
+                    lon_bin=lon_idx,
+                )
+                cb_cph_profile = cb_cph_values.mean(dim="pixel", skipna=True).isel(time_bin=0).values
+            else:
+                cb_cph_profile = np.full_like(bulk_offset_top_m, np.nan, dtype=np.float32)
 
             ct_iwc_mean = float(ct_iwc_values.mean(dim="pixel").isel(time_bin=0).values)
             ct_height_mean = float(ct_height_values.mean(dim="pixel").isel(time_bin=0).values)
@@ -210,6 +229,7 @@ def get_bulk_values(row):
             cb_ext_means.append(cb_ext_profile)
             cb_temp_means.append(cb_temp_profile)
             cb_Z_means.append(cb_Z_profile)
+            cb_cph_means.append(cb_cph_profile)
 
             ct_iwc_means.append(ct_iwc_mean)
             ct_height_means.append(ct_height_mean)
@@ -224,6 +244,7 @@ def get_bulk_values(row):
         cb_ext_means,
         cb_temp_means,
         cb_Z_means,
+        cb_cph_means,
         bulk_offset_top_m,
         bulk_offset_bottom_m,
         bulk_offset_mid_m,
@@ -279,6 +300,7 @@ def extract_iwc_relative_to_peak(row):
             "iwc_ct": row["iwc_top_means"][i],
 
             "bulk_height_profile_m": np.asarray(row["bulk_height_means_m"][i]),
+            "cph_profile": np.asarray(row["cph_bulk_means"][i]),
             "cloud_top_height_m": row["ddc_cloud_top_height_means_m"][i],
             "cloud_top_temp_K": row["ddc_cloud_top_temp_means_K"][i],
 
@@ -310,6 +332,7 @@ valid_clouds[
         "ext_bulk_means",
         "temp_bulk_means",
         "Z_bulk_means",
+        "cph_bulk_means",
         "bulk_level_offset_top_m",
         "bulk_level_offset_bottom_m",
         "bulk_level_offset_mid_m",
@@ -335,6 +358,11 @@ iwc_stats_by_rel_time = (
 
         mean_bulk_height_profile_m=(
             "bulk_height_profile_m",
+            lambda profiles: np.nanmean(np.stack(profiles), axis=0),
+        ),
+
+        mean_cph_profile=(
+            "cph_profile",
             lambda profiles: np.nanmean(np.stack(profiles), axis=0),
         ),
 
@@ -398,4 +426,3 @@ iwc_rel_df.to_parquet(
 iwc_stats_by_rel_time.to_parquet(
     os.path.join(stats_out_fp, f"mean_iwc_by_height_data_V3_1_{ANALYSIS_YEAR}.parquet")
 )
-
