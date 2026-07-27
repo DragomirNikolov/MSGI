@@ -61,7 +61,7 @@ ORIGINAL_VALID_CLOUD_COLUMNS = valid_clouds.columns.tolist()
 i=0
 row_temp = valid_clouds.iloc[0]
 while row_temp["colocation_time"].size==0:
-    row_temp=valid_clouds.iloc[ind]
+    row_temp=valid_clouds.iloc[i]
 # for col_time in row["colocation_time"]:
 col_time = row_temp["colocation_time"][0]
 dt = pd.Timestamp(col_time)
@@ -137,7 +137,7 @@ def get_bulk_values(row):
             if len(cb_iwc_means)>=1:
                 missing_profile = np.full(cb_iwc_means[-1].shape, np.nan, dtype=np.float32)
             else:
-                missing_profile = np.full((18,), np.nan, dtype=np.float32)
+                missing_profile = np.full((25,), np.nan, dtype=np.float32)
             cb_iwc_means.append(missing_profile.copy())
             cb_height_means.append(missing_profile.copy())
             cb_ext_means.append(missing_profile.copy())
