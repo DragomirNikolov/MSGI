@@ -14,24 +14,24 @@ EPOCH_UNITS = "seconds since 1970-01-01 00:00:00"
 SENSOR_ZENITH_MAX_DEG = 18.0
 
 # For cloud top properties product
-# PHASE_INVALID = -1
-# PHASE_NO_CLOUD = 0
-# PHASE_WATER = 1
-# PHASE_ICE = 2
-# PHASE_MIXED = 3
+PHASE_INVALID = -1
+PHASE_NO_CLOUD = 0
+PHASE_WATER = 1
+PHASE_ICE = 2
+PHASE_MIXED = 3
 # For optical properties product (which seems to have more valid phase values, but we only consider these 4 classes):
-PHASE_INVALID = 0
-PHASE_NO_CLOUD = 1
-PHASE_WATER = 2
-PHASE_ICE = 3
-PHASE_MIXED = 10
+# PHASE_INVALID = 0
+# PHASE_NO_CLOUD = 1
+# PHASE_WATER = 2
+# PHASE_ICE = 3
+# PHASE_MIXED = 10
 
 
 """
 "python /wolke_scratch/dnikolo/MSGI/msgi/obs/modis/modis_cloud_top_binning.py \
     --input /wolke_scratch/dnikolo/MODIS/CLDPROP_L2_MODIS_Aqua/ \
-    --output-root /wolke_scratch/dnikolo/MODIS/CPH_data \
-        --lon-min -90 --lon-max 90 --dlat 0.3 --dlon 0.3 --lat-min -81 --lat-max 81"
+    --output-root /wolke_scratch/dnikolo/MODIS/CPH_02 \
+        --lon-min -81 --lon-max 81 --dlat 0.2 --dlon 0.2 --lat-min -81 --lat-max 81"
 """
 
 def _parse_args() -> argparse.Namespace:
@@ -176,8 +176,8 @@ def _read_modis_fields(
         sensor_zenith_deg = np.asarray(ds_geo["sensor_zenith"].values, dtype=np.float64)
 
     with xr.open_dataset(input_path, group="geophysical_data") as ds_gph:
-        # phase_raw = np.asarray(ds_gph["Cloud_Phase_Cloud_Top_Properties"].values)
-        phase_raw = np.asarray(ds_gph["Cloud_Phase_Optical_Properties"].values)
+        phase_raw = np.asarray(ds_gph["Cloud_Phase_Cloud_Top_Properties"].values)
+        # phase_raw = np.asarray(ds_gph["Cloud_Phase_Optical_Properties"].values)
         cth_raw_m = np.asarray(ds_gph["Cloud_Top_Height"].values, dtype=np.float64)
         ctt_raw_k = np.asarray(ds_gph["Cloud_Top_Temperature"].values, dtype=np.float64)
 
@@ -745,12 +745,12 @@ def main() -> None:
 if __name__ == "__main__":
     summary = process_time_period(
         base_input_dir = Path("/wolke_scratch/dnikolo/MODIS/CLDPROP_L2_MODIS_Aqua"),
-        output_root = Path("/wolke_scratch/dnikolo/MODIS/CPH_data_optical"),
-        start_time = "20070101_0000",
-        end_time = "20071231_2345",
+        output_root = Path("/wolke_scratch/dnikolo/MODIS/CPH_02"),
+        start_time = "20080101_0000",
+        end_time = "20081231_2345",
         lat_min = -81,
         lat_max=81,
-        dlat = 0.3,
+        dlat = 0.2,
         lon_min = -81,
         lon_max = 81,
         dlon = 0.3)
