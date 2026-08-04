@@ -223,6 +223,7 @@ def split_dir_files(gte_config, msgi_config):
         
         if model == "CESM":
             CPH = data["ACT_ITMF"]
+            # CPH = data["ACT_ITF"]
             CTT = data["ACTT"]
 
         
@@ -483,6 +484,7 @@ def resample_dir_files(gte_config,msgi_config):
                     str(cdo_threads),
                     f"-setgrid,{setgrid_file}",f"-remap,{grid_file},{weights_file}",
                     "-selvar,ACT_ITMF,ACTT,ACTP",
+                    # "-selvar,ACT_ITF,ACTT,ACTP",
                     # "-setctomiss,0",
                     in_file,
                     out_file,

@@ -1,0 +1,22 @@
+resample_input_dir: "/nfs/ch4/wolke_scratch/dnikolo/ICON_Data/sedim_search/R2B4/wbf_v3/raw_data"
+
+resample_output_dir: "/nfs/ch4/wolke_scratch/dnikolo/ICON_Data/sedim_search/R2B4/wbf_v3/resampled"
+# preprocessing_output_dir: /nfs/ch4/wolke_scratch/dnikolo/ICON_Data/Nudged_run_cph_03_03
+experiment_name: "sedim_r2b4_wbfv3"
+
+# CDO Settings and helper files
+grid_type: "geostationary"
+#Only required in geostationary grid
+poles: ["np","sp"]
+cdo_aux_dir: "/nfs/ch4/wolke_scratch/dnikolo/ICON_Data/aux_tools"
+cdo_grid_file: {"np": "/nfs/ch4/wolke_scratch/dnikolo/ICON_Data/aux_tools/grid_CLAAS_Agg_3_np.txt",
+                "sp": "/nfs/ch4/wolke_scratch/dnikolo/ICON_Data/aux_tools/grid_CLAAS_Agg_3_sp.txt"}
+cdo_threads: 8
+
+resampling_methods: ["laf"]
+twc_threshold: 1.0e-5
+additional_vars:
+  - ctt
+  - ctp
+
+model: "ICON"
