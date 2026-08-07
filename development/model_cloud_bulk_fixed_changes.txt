@@ -1,0 +1,123 @@
+Changes to development/model_cloud_bulk_fixed.py
+================================================
+
+Summary
+-------
+The script now supports both the original single-file workflow and a new
+config-driven batch workflow for ICON cloud bulk files.
+
+Single-file mode remains available with:
+
+  python development/model_cloud_bulk_fixed.py \
+    --atm-3d <atm_3d_cloud_file.nc> \
+    --cloud-top <ctp_2d_file.nc> \
+    --output <output_file.nc>
+
+Config-driven batch mode is selected when the single-file arguments are not
+provided. It reads:
+
+  - GTE config from -cf / --configuration_filepath
+  - MSGI config from -mcf / --msgi_configuration_filepath
+
+Example:
+
+  python development/model_cloud_bulk_fixed.py \
+    -cf path/to/gte_config.yaml \
+    -mcf path/to/msgi_config.yaml
+
+Cloud-top derivation option
+---------------------------
+Added an optional cloud-top derivation path. It is off by default.
+
+Single-file mode:
+
+  --derive-cloud-top
+
+Config mode:
+
+  bulk_derive_cloud_top: true
+
+When enabled, the script derives the cloud top from the highest geometric model
+level where cli + clw is at least the condensate threshold, while still applying
+the ctmask threshold. This avoids relying on ctlev when ctlev is present but
+contains only zeroes.
+
+ctlev handling
+--------------
+When cloud-top derivation is off, the script now treats ctlev explicitly as a
+one-based ICON model level. It converts ctlev to the zero-based positional index
+used by Python with:
+
+  cloud_top_index = ctlev - 1
+
+Invalid, missing, masked, or out-of-range cloud-top levels are written as:
+
+  cloud_top_level_index = -1
+  cloud_top_height_m = NaN
+
+Config batch behavior
+---------------------
+The new config batch workflow:
+
+  - Reads resample_input_dir from the MSGI config.
+  - Uses the GTE start_time and end_time date range.
+  - Finds ICON atm files matching *_atm_3d_cloud_ml_*.nc.
+  - Finds matching cloud-top files matching *_ctp_2d_ml_*.nc by timestamp.
+  - Filters files by experiment_name when it is present in MSGI config.
+  - Processes matched file pairs in parallel.
+  - Uses n_preproc_cores from GTE config for parallel worker count, with
+    fallback to n_workers, n_postproc_cores, then 1.
+  - Writes one output file per analyzed atm file.
+  - Writes outputs to <resample_input_dir>/../bulk_data.
+
+Output names
+------------
+For an input file named:
+
+  <experiment>_atm_3d_cloud_ml_<timestamp>.nc
+
+the output is named:
+
+  <experiment>_bulk_cloud_ml_<timestamp>.nc
+
+Bulk config keys
+----------------
+The batch mode accepts these optional MSGI config keys:
+
+  bulk_zg_name
+  bulk_ze_name
+  bulk_cli_name
+  bulk_clw_name
+  bulk_ctlev_name
+  bulk_ctmask_name
+  bulk_max_depth_m
+  bulk_dz_m
+  bulk_condensate_threshold
+  bulk_ctmask_threshold
+  bulk_derive_cloud_top
+
+Defaults match the previous single-file defaults.
+
+Compatibility behavior
+----------------------
+The script first tries the normal GTE and MSGI config readers. If those readers
+reject a config because of unrelated strict validation drift, the script falls
+back to bulk-only validation:
+
+  - GTE fallback requires start_time and end_time.
+  - MSGI fallback requires resample_input_dir.
+  - MSGI model defaults to ICON when omitted.
+
+Validation performed
+--------------------
+The following checks were run successfully after the changes:
+
+  python development/model_cloud_bulk_fixed.py --self-test
+  python -m py_compile development/model_cloud_bulk_fixed.py
+
+Additional smoke checks confirmed:
+
+  - ICON atm/ctp file pairing works by timestamp.
+  - Config mode exits cleanly when no files match.
+  - Derived cloud-top mode produces nonzero cloud-top indices and finite ze
+    values across bulk levels on a real ICON sample.

@@ -912,8 +912,8 @@ if __name__ == "__main__":
     process_multiple_days(
         base_input_dir=Path("/wolke_scratch/dnikolo/DARDAR_data/DARDAR-MASK"),
         base_output_dir=Path("/wolke_scratch/dnikolo/DARDAR_data/CPH_02"),
-        start_date="20060601",
-        end_date="20061231",
+        start_date="20120501",
+        end_date="20121231",
         bin_size_deg=0.2,
         n_workers=12
     )
