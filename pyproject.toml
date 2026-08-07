@@ -5,7 +5,7 @@ authors = [{name = "Dragomir Nikolov", email = "dnikolo@ethz.ch"}]
 description = "Compare representation of glaciation events between satellite observations and model simulations"
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = ["numpy", "scipy", "xarray", "pandas", "dask", "matplotlib", "cartopy"]
+dependencies = ["numpy", "scipy", "xarray", "pandas", "pyarrow", "dask", "matplotlib", "cartopy"]
 
 [project.urls]
 Homepage = "https://github.com/DragomirNikolov/MSGIr"
@@ -17,4 +17,3 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["msgi*"]
-
