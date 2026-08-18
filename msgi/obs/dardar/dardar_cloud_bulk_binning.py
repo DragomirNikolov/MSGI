@@ -20,6 +20,8 @@ PHASE_MIXED = np.int8(3)
 
 PHASE_LABELS = np.array(["no_cloud", "liquid", "ice", "mixed"], dtype=object)
 
+NETCDF_COMPRESSION_LEVEL = 4
+
 EXCLUDE_CODES = np.array([-99, -9, -2, -1, 0, 6, 8], dtype=np.int16)
 LIQUID_CODES = np.array([3, 5, 7, 11, 12, 13, 15], dtype=np.int16)
 ICE_CODES = np.array([1, 2, 9, 10], dtype=np.int16)
@@ -978,6 +980,14 @@ def bin_cloud_bulk_latlon(
             "lon_spacing_degrees": float(dlon),
         }
     )
+
+    # Apply lossless DEFLATE compression to all NetCDF output variables.
+    # Grouping by time_bin below preserves these variable encodings.
+    for variable in out.variables:
+        out[variable].encoding.update(
+            {"zlib": True, "complevel": NETCDF_COMPRESSION_LEVEL}
+        )
+
     return out
 
 
@@ -1079,7 +1089,10 @@ def merge_ddcb_suffix_files_in_dir(day_dir: Path, workers: int = 8) -> None:
 
             tmp_path.unlink(missing_ok=True)
             result = subprocess.run(
-                ["cdo", "-L", "ensmean", *map(str, files), str(tmp_path)],
+                [
+                    "cdo", "-L", "-f", "nc4", "-z", "zip_4", "ensmean",
+                    *map(str, files), str(tmp_path),
+                ],
                 capture_output=True,
                 text=True,
             )
@@ -1122,7 +1135,10 @@ def move_wrong_day_files(day_dir: Path, base_path: Path, workers: int = 8) -> No
         tmp_path = out_path.with_suffix(".tmp.nc")
         tmp_path.unlink(missing_ok=True)
         result = subprocess.run(
-            ["cdo", "-L", "ensmean", *map(str, inputs), str(tmp_path)],
+            [
+                "cdo", "-L", "-f", "nc4", "-z", "zip_4", "ensmean",
+                *map(str, inputs), str(tmp_path),
+            ],
             capture_output=True,
             text=True,
         )
@@ -1293,15 +1309,15 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    # main()
-    _process_file(
-            in_path="/wolke_scratch/dnikolo/DARDAR_data/DARDAR-CLOUD/2007/2007_10_12/DARDAR-CLOUD_2007285011553_07743_V3-00.nc",
-            output_dir="/wolke_scratch/dnikolo/dump/dardar-cloud_cb",
-            lat_min=-81,
-            lat_max=81,
-            dlat=0.3,
-            lon_min=-81,
-            lon_max=81,
-            dlon=0.3,
-            file_ind=0,
-        )
+    main()
+    # _process_file(
+    #         in_path="/wolke_scratch/dnikolo/DARDAR_data/DARDAR-CLOUD/2007/2007_10_12/DARDAR-CLOUD_2007285011553_07743_V3-00.nc",
+    #         output_dir="/wolke_scratch/dnikolo/dump/dardar-cloud_cb",
+    #         lat_min=-81,
+    #         lat_max=81,
+    #         dlat=0.3,
+    #         lon_min=-81,
+    #         lon_max=81,
+    #         dlon=0.3,
+    #         file_ind=0,
+    #     )

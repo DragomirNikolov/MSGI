@@ -62,6 +62,7 @@ i=0
 row_temp = valid_clouds.iloc[0]
 while row_temp["colocation_time"].size==0:
     row_temp=valid_clouds.iloc[i]
+    i+=1
 # for col_time in row["colocation_time"]:
 col_time = row_temp["colocation_time"][0]
 dt = pd.Timestamp(col_time)
@@ -83,7 +84,7 @@ dlon = lon_bins[1] - lon_bins[0]
 nlat = len(lat_bins)
 nlon = len(lon_bins)
 
-
+print("a")
 
 
 def _to_dBZe(linear_z):
@@ -340,8 +341,11 @@ valid_clouds[
 ] = valid_clouds.apply(get_bulk_values, axis=1, result_type="expand")
 
 all_records = []
-
-for _, row in valid_clouds.iterrows():
+print("b")
+for i, row in valid_clouds.iterrows():
+    if i%1000==0:
+        print(i)
+    
     all_records.extend(extract_iwc_relative_to_peak(row))
 
 iwc_rel_df = pd.DataFrame(all_records)
