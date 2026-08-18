@@ -280,7 +280,6 @@ def plot_lines_with_ci(
     ax.set_ylabel(ylabel)
     ax.grid(alpha=0.3)
 
-
 bulk_data_filtered = pd.read_parquet(DATA_PATH)
 
 required_columns = {
@@ -290,6 +289,8 @@ required_columns = {
     "ddc_cloud_top_height_means_m",
     "avg_ctt",
     "avg_cth",
+    "avg_cot",
+    "3km_cot",
     "Cloud type",
 }
 missing_columns = required_columns.difference(bulk_data_filtered.columns)
@@ -323,6 +324,14 @@ cth_avg = np.full(n_times, np.nan)
 cth_avg_ci_low = np.full(n_times, np.nan)
 cth_avg_ci_high = np.full(n_times, np.nan)
 
+cot_3km = np.full(n_times, np.nan)
+cot_3km_ci_low = np.full(n_times, np.nan)
+cot_3km_ci_high = np.full(n_times, np.nan)
+
+cot_avg = np.full(n_times, np.nan)
+cot_avg_ci_low = np.full(n_times, np.nan)
+cot_avg_ci_high = np.full(n_times, np.nan)
+
 for j, ind in enumerate(inds):
     time_df = bulk_data_filtered[bulk_data_filtered["rel_ind"] == ind]
 
@@ -337,6 +346,8 @@ for j, ind in enumerate(inds):
     avg_ctt_c = time_df["avg_ctt"].astype(float).to_numpy() - 273.15
     cth_m = time_df["ddc_cloud_top_height_means_m"].astype(float).to_numpy()
     avg_cth_m = time_df["avg_cth"].astype(float).to_numpy() /1000
+    cot_3km_values = time_df["3km_cot"].astype(float).to_numpy()
+    avg_cot_values = time_df["avg_cot"].astype(float).to_numpy()
 
     ctt_ddc[j], ctt_ddc_ci_low[j], ctt_ddc_ci_high[j] = bootstrap_ci(
         ctt_c,
@@ -362,6 +373,18 @@ for j, ind in enumerate(inds):
         n_boot=n_bootstrap,
         rng=rng,
     )
+    cot_3km[j], cot_3km_ci_low[j], cot_3km_ci_high[j] = bootstrap_ci(
+        cot_3km_values,
+        confidence=confidence_level,
+        n_boot=n_bootstrap,
+        rng=rng,
+    )
+    cot_avg[j], cot_avg_ci_low[j], cot_avg_ci_high[j] = bootstrap_ci(
+        avg_cot_values,
+        confidence=confidence_level,
+        n_boot=n_bootstrap,
+        rng=rng,
+    )
 
     for i, group in enumerate(level_groups):
         valid_vertical = finite_layer_mask(time_df["Z_bulk_means"], group)
@@ -378,11 +401,11 @@ for j, ind in enumerate(inds):
 ci_percent = 100 * confidence_level
 sample_cmap = "viridis" if cm is None else cm.batlow
 
-fig = plt.figure(figsize=(10, 10), constrained_layout=True)
+fig = plt.figure(figsize=(10, 12), constrained_layout=True)
 gs = gridspec.GridSpec(
-    4,
+    5,
     2,
-    height_ratios=[1, 1, 1, 1],
+    height_ratios=[1, 1, 1, 1, 1],
     width_ratios=[1, 0.05],
     figure=fig,
 )
@@ -390,9 +413,10 @@ gs = gridspec.GridSpec(
 ax_n = fig.add_subplot(gs[0, 0])
 ax_ctt = fig.add_subplot(gs[1, 0])
 ax_cth = fig.add_subplot(gs[2, 0])
-ax_cloud_type = fig.add_subplot(gs[3, 0])
+ax_cot_3km = fig.add_subplot(gs[3, 0])
+ax_cloud_type = fig.add_subplot(gs[4, 0])
 ax_n_cb = fig.add_subplot(gs[0, 1])
-ax_cloud_type_legend = fig.add_subplot(gs[3, 1])
+ax_cloud_type_legend = fig.add_subplot(gs[4, 1])
 
 im_n = plot_heatmap_with_ci(
     ax_n,
@@ -431,6 +455,18 @@ plot_lines_with_ci(
     avg_label="SEVIRI avg",
 )
 
+plot_lines_with_ci(
+    ax_cot_3km,
+    rel_times_min,
+    means={"ddc": cot_3km, "avg": cot_avg},
+    ci_low={"ddc": cot_3km_ci_low, "avg": cot_avg_ci_low},
+    ci_high={"ddc": cot_3km_ci_high, "avg": cot_avg_ci_high},
+    title=f"Cloud optical thickness by time ({ci_percent:g}% bootstrap CI)",
+    ylabel="Cloud optical thickness",
+    ddc_label="3 km COT",
+    avg_label="SEVIRI avg",
+)
+
 plot_stacked_count_columns(
     ax_cloud_type,
     cloud_type_count_map,
@@ -440,7 +476,7 @@ plot_stacked_count_columns(
     legend_ax=ax_cloud_type_legend,
 )
 
-for ax in (ax_n, ax_ctt, ax_cth):
+for ax in (ax_n, ax_ctt, ax_cth, ax_cot_3km):
     ax.set_xlabel("")
 ax_ctt.set_ylim(-36,0)
 ax_cth.set_ylim(0,6)
@@ -452,6 +488,12 @@ ax_ctt.legend(
     frameon=False,
 )
 ax_cth.legend(
+    loc="center left",
+    bbox_to_anchor=(1.02, 0.5),
+    fontsize=7,
+    frameon=False,
+)
+ax_cot_3km.legend(
     loc="center left",
     bbox_to_anchor=(1.02, 0.5),
     fontsize=7,

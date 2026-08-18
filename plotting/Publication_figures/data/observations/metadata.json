@@ -1,5 +1,5 @@
 {
-  "created_utc": "2026-08-10T14:15:14.581726+00:00",
+  "created_utc": "2026-08-18T10:38:44.861985+00:00",
   "settings": {
     "l2_start": 5,
     "l_depth": 7,
@@ -19,11 +19,13 @@
       45
     ],
     "timesteps": [
+      3,
       2,
       1,
       0,
       -1,
-      -2
+      -2,
+      -3
     ],
     "mean_mode": "log",
     "confidence_level": 0.9,
@@ -31,7 +33,7 @@
     "n_bootstrap": 2000,
     "peak_ind": 0,
     "weight_mode": "residual",
-    "weight_floor": 0.05,
+    "weight_floor": 0.0,
     "invert_weights": false,
     "equalise_index_size": false
   },
