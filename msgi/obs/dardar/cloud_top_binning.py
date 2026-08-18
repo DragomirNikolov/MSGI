@@ -22,6 +22,8 @@ PHASE_MIXED = np.int8(3)
 
 PHASE_LABELS = np.array(["no_cloud", "liquid", "ice", "mixed"], dtype=object)
 
+NETCDF_COMPRESSION_LEVEL = 4
+
 # Excluded from cloud-top candidate search
 EXCLUDE_CODES = np.array([-99, -2, -1, 0, 6, 8], dtype=np.int16)
 
@@ -604,6 +606,14 @@ def bin_cloud_top_phase4_latlon(
         "history": "Created by bin_cloud_top_phase4_latlon",
     })
 
+    # Apply lossless DEFLATE compression to every variable written to NetCDF.
+    # These encodings are retained by the time-bin datasets created below.
+    for variable in out.variables:
+        out[variable].encoding.update({
+            "zlib": True,
+            "complevel": NETCDF_COMPRESSION_LEVEL,
+        })
+
     return out
 
 def _print_summary(out: xr.Dataset) -> None:
@@ -767,7 +777,8 @@ def merge_ddct_suffix_files_in_dir(day_dir: Path, workers: int = 8) -> None:
             if tmp.exists():
                 tmp.unlink()
 
-            cmd = ["cdo", "-L", "ensmean"] + [str(f) for f in files] + [str(tmp)]
+            cmd = ["cdo", "-L", "-f", "nc4", "-z", "zip_4", "ensmean"]
+            cmd += [str(f) for f in files] + [str(tmp)]
             res = subprocess.run(cmd, capture_output=True, text=True)
             if res.returncode != 0:
                 raise RuntimeError(res.stderr.strip() or "cdo ensmean failed")
@@ -822,7 +833,10 @@ def move_wrong_day_files(day_dir: Path, base_path: Path, workers: int = 8) -> No
         tmp = out.with_suffix(".tmp.nc")
         tmp.unlink(missing_ok=True)
         res = subprocess.run(
-            ["cdo", "-L", "ensmean", *map(str, inputs), str(tmp)],
+            [
+                "cdo", "-L", "-f", "nc4", "-z", "zip_4", "ensmean",
+                *map(str, inputs), str(tmp),
+            ],
             capture_output=True, text=True
         )
         if res.returncode:
@@ -912,8 +926,8 @@ if __name__ == "__main__":
     process_multiple_days(
         base_input_dir=Path("/wolke_scratch/dnikolo/DARDAR_data/DARDAR-MASK"),
         base_output_dir=Path("/wolke_scratch/dnikolo/DARDAR_data/CPH_02"),
-        start_date="20120501",
-        end_date="20121231",
+        start_date="20150101",
+        end_date="20161231",
         bin_size_deg=0.2,
         n_workers=12
     )
