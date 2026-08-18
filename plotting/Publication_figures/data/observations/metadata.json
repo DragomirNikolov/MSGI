@@ -1,8 +1,8 @@
 {
-  "created_utc": "2026-08-18T10:38:44.861985+00:00",
+  "created_utc": "2026-08-18T13:08:37.916774+00:00",
   "settings": {
-    "l2_start": 5,
-    "l_depth": 7,
+    "l2_start": 4,
+    "l_depth": 8,
     "iqr_filter_y": true,
     "iqr_filter_x": true,
     "ind_range": [
@@ -19,18 +19,16 @@
       45
     ],
     "timesteps": [
-      3,
       2,
       1,
       0,
       -1,
-      -2,
-      -3
+      -2
     ],
     "mean_mode": "log",
     "confidence_level": 0.9,
     "confidence_level_percent": 90.0,
-    "n_bootstrap": 2000,
+    "n_bootstrap": 5000,
     "peak_ind": 0,
     "weight_mode": "residual",
     "weight_floor": 0.0,

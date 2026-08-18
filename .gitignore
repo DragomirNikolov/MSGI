@@ -213,3 +213,4 @@ __marimo__/
 # Others
 Bulk_data/
 plotting/Publication_figures/arial/
+/plotting/Publication_figures/data/observations/*.parquet
