@@ -364,7 +364,7 @@ def bin_cloud_top_phase4_latlon(
     np.add.at(n_ice, (lat_idx[phase_valid == PHASE_ICE], lon_idx[phase_valid == PHASE_ICE]), 1)
     np.add.at(n_mixed, (lat_idx[phase_valid == PHASE_MIXED], lon_idx[phase_valid == PHASE_MIXED]), 1)
 
-    # Mean phase score over cloudy-only tops: liquid=0, mixed=0.5, ice=1
+    # Mean phase score over cloudy-only tops: liquid=1.0, mixed=1.5, ice=2
     score = np.full(phase_valid.shape, np.nan, dtype=np.float64)
     score[phase_valid == PHASE_LIQUID] = 1.0
     score[phase_valid == PHASE_MIXED] = 1.5
