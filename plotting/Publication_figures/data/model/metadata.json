@@ -1,0 +1,71 @@
+{
+  "created_utc": "2026-08-19T14:37:08.143868+00:00",
+  "settings": {
+    "l2_start": 4,
+    "l_depth": 8,
+    "iqr_filter_y": true,
+    "iqr_filter_x": true,
+    "ind_range": [
+      -3,
+      4
+    ],
+    "rel_times_min": [
+      -45,
+      -30,
+      -15,
+      0,
+      15,
+      30,
+      45
+    ],
+    "timesteps": [
+      2,
+      1,
+      0,
+      -1,
+      -2
+    ],
+    "mean_mode": "log",
+    "confidence_level": 0.9,
+    "confidence_level_percent": 90.0,
+    "n_bootstrap": 5000,
+    "peak_ind": 0,
+    "weight_mode": "residual",
+    "weight_floor": 0.0,
+    "invert_weights": false,
+    "equalise_index_size": false
+  },
+  "files": {
+    "reflectivity_deviation_heatmap.csv": {
+      "description": "Radar reflectivity deviation from the vertical-level mean.",
+      "columns": {
+        "vertical_level": "Vertical-level label",
+        "rel_time_min": "Time relative to the glaciation peak in minutes",
+        "reflectivity_deviation_dbz": "Radar reflectivity deviation in dBZ"
+      }
+    },
+    "sedimentation_anomaly.csv": {
+      "description": "Sedimentation anomaly with bootstrap confidence interval.",
+      "columns": {
+        "rel_time_min": "Time relative to the glaciation peak in minutes",
+        "sedimentation_anomaly_dbz": "Sedimentation anomaly in dBZ",
+        "ci_low_dbz": "Lower bootstrap confidence limit in dBZ",
+        "ci_high_dbz": "Upper bootstrap confidence limit in dBZ"
+      }
+    },
+    "peak_ice_fraction_correlation.csv": {
+      "description": "Correlation with peak ice fraction and bootstrap confidence interval.",
+      "columns": {
+        "rel_time_min": "Time relative to the glaciation peak in minutes",
+        "corr_with_peak": "Correlation coefficient",
+        "ci_low": "Lower bootstrap confidence limit",
+        "ci_high": "Upper bootstrap confidence limit"
+      }
+    }
+  },
+  "software": {
+    "python": "3.11.4",
+    "numpy": "1.25.2",
+    "pandas": "2.0.3"
+  }
+}
