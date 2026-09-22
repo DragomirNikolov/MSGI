@@ -1,8 +1,8 @@
 {
-  "created_utc": "2026-08-19T13:39:09.753809+00:00",
+  "created_utc": "2026-09-22T13:47:37.472660+00:00",
   "settings": {
-    "l2_start": 4,
-    "l_depth": 8,
+    "l2_start": 5,
+    "l_depth": 7,
     "iqr_filter_y": true,
     "iqr_filter_x": true,
     "ind_range": [
@@ -28,14 +28,22 @@
     "mean_mode": "log",
     "confidence_level": 0.9,
     "confidence_level_percent": 90.0,
-    "n_bootstrap": 5000,
+    "n_bootstrap": 2000,
     "peak_ind": 0,
-    "weight_mode": "residual",
+    "weight_mode": "none",
     "weight_floor": 0.0,
     "invert_weights": false,
     "equalise_index_size": false
   },
   "files": {
+    "mean_reflectivity.csv": {
+      "description": "Radar reflectivity means.",
+      "columns": {
+        "vertical_level": "Vertical-level label",
+        "rel_time_min": "Time relative to the glaciation peak in minutes",
+        "reflectivity_dbz": "Radar reflectivity in dBZ"
+      }
+    },
     "reflectivity_deviation_heatmap.csv": {
       "description": "Radar reflectivity deviation from the vertical-level mean.",
       "columns": {
