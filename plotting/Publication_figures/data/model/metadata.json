@@ -1,5 +1,5 @@
 {
-  "created_utc": "2026-08-19T17:40:34.674389+00:00",
+  "created_utc": "2026-09-22T15:32:19.055904+00:00",
   "settings": {
     "l2_start": 4,
     "l_depth": 8,
@@ -36,6 +36,14 @@
     "equalise_index_size": false
   },
   "files": {
+    "mean_reflectivity.csv": {
+      "description": "Radar reflectivity means.",
+      "columns": {
+        "vertical_level": "Vertical-level label",
+        "rel_time_min": "Time relative to the glaciation peak in minutes",
+        "reflectivity_dbz": "Radar reflectivity in dBZ"
+      }
+    },
     "reflectivity_deviation_heatmap.csv": {
       "description": "Radar reflectivity deviation from the vertical-level mean.",
       "columns": {

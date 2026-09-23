@@ -14,7 +14,6 @@ import xarray as xr
 import yaml
 from glaciation_time_estimator.auxiliary_func.config_reader import read_config as read_gte_config
 from msgi.aux import read_config as read_msgi_config
-from msgi.aux.config_reader import parse_cmd_args as parse_msgi_config_path
 
 
 DEFAULT_CONDENSATE_THRESHOLD = 1.0e-5

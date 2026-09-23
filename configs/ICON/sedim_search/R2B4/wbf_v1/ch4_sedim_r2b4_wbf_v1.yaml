@@ -2,7 +2,7 @@ resample_input_dir: "/wolke_scratch/dnikolo/ICON_Data/sedim_search/R2B4/wbf_v1/r
 
 resample_output_dir: "/wolke_scratch/dnikolo/ICON_Data/sedim_search/R2B4/wbf_v1/resampled"
 # preprocessing_output_dir: /wolke_scratch/dnikolo/ICON_Data/Nudged_run_cph_03_03
-experiment_name: "sedim_r2b4_wbfv3"
+experiment_name: "sedim_r2b4_wbfv1"
 
 # CDO Settings and helper files
 grid_type: "geostationary"
