@@ -1,8 +1,8 @@
 {
-  "created_utc": "2026-09-22T15:32:19.055904+00:00",
+  "created_utc": "2026-09-23T15:24:19.029416+00:00",
   "settings": {
     "l2_start": 4,
-    "l_depth": 8,
+    "l_depth": 7,
     "iqr_filter_y": true,
     "iqr_filter_x": true,
     "ind_range": [
