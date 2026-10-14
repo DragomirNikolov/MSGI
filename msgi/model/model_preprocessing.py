@@ -133,7 +133,13 @@ def split_dir_files(gte_config, msgi_config):
     # ---------------------------------------------------------------
     # Temperature range loop
     # ---------------------------------------------------------------
-    T_ranges = [(i, i + 6) for i in range(273 - 6, 273 - 38, -6)]
+    mode = msgi_config.get("mode", "mixed_phase")
+    if mode == "mixed_phase":
+        T_ranges = [(i, i + 6) for i in range(273 - 6, 273 - 38, -6)]
+    elif mode == "cirrus":
+        T_ranges = [(i, i + 10) for i in range(273 - 48, 273 - 99, -10)]
+    else:
+        raise ValueError("'mode' must be one of: mixed_phase, cirrus.")
     
 
     folder_path = msgi_config["resample_output_dir"]
@@ -159,7 +165,7 @@ def split_dir_files(gte_config, msgi_config):
     twc_threshold = msgi_config["twc_threshold"]
     tag = f"Agg_{gte_config['agg_fact']:02}"
 
-    # Mixed temperature bounds across all ranges
+    # Combined temperature bounds across all ranges in the selected mode
     T_min_mixed = min(x for t in T_ranges for x in t)
     T_max_mixed = max(x for t in T_ranges for x in t)
 
@@ -237,7 +243,7 @@ def split_dir_files(gte_config, msgi_config):
 
 
         # ---------------------------------------------------------------
-        # 1) Existing per-temperature-range output (unchanged behavior)
+        # 1) Per-temperature-range output for the selected mode
         # ---------------------------------------------------------------
         CPH_results = []
 
@@ -250,7 +256,7 @@ def split_dir_files(gte_config, msgi_config):
                 CPH_results.append((CPH+1).where(CTT_mask, other=0))
 
         # ---------------------------------------------------------------
-        # 2) New mixed-temp-range output (single mask, one file per time)
+        # 2) Combined temperature-range output (single mask, one file per time)
         # ---------------------------------------------------------------
         mixed_mask = (CTT >= T_min_mixed) & (CTT < T_max_mixed)
         if "twc" in data.data_vars:
