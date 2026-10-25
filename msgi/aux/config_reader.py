@@ -14,6 +14,7 @@ REQUIRED_KEYS = {
 }
 
 VALID_RESAMPLING_METHODS = {"laf", "dis"}
+VALID_MODES = {"mixed_phase", "cirrus"}
 
 
 def parse_cmd_args() -> str:
@@ -40,6 +41,11 @@ def _validate_config(config: dict[str, Any]) -> dict[str, Any]:
     if missing:
         missing_str = ", ".join(sorted(missing))
         raise KeyError(f"Missing required MSGI config key(s): {missing_str}")
+
+    mode = config.get("mode", "mixed_phase")
+    if not isinstance(mode, str) or mode not in VALID_MODES:
+        raise ValueError("'mode' must be one of: mixed_phase, cirrus.")
+    config["mode"] = mode
 
     resample_input_dir = config["resample_input_dir"]
     if not isinstance(resample_input_dir, str) or not resample_input_dir.strip():

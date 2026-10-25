@@ -11,12 +11,12 @@ import xarray as xr
 
 
 INPUT_PARQUET = Path(
-    "/wolke_scratch/dnikolo/ICON_Data/sedim_search/R2B4/wbf_v3/"
+    "/wolke_scratch/dnikolo/ICON_Data/sedim_search/R2B4/p3_lite/"
     "postprocessing_output/Final_results/2007_glac_04.parquet"
 )
 OUTPUT_PARQUET = INPUT_PARQUET.with_name(f"{INPUT_PARQUET.stem}_bulk.parquet")
 BULK_DATA_DIR = Path(
-    "/wolke_scratch/dnikolo/ICON_Data/sedim_search/" "R2B4/wbf_v3/bulk_data"
+    "/wolke_scratch/dnikolo/ICON_Data/sedim_search/" "R2B4/p3_lite/bulk_data"
 )
 
 TIMESTEP = pd.Timedelta(minutes=15)
@@ -36,7 +36,7 @@ def timestamp_to_filename(
     timestamp: pd.Timestamp, bulk_data_dir: Path = BULK_DATA_DIR
 ) -> Path:
     timestamp = pd.Timestamp(timestamp)
-    filename = f"sedim_r2b4_wbfv3_bulk_cloud_ml_{timestamp:%Y%m%dT000000}Z.nc"
+    filename = f"sedim_r2b4_p3_bulk_cloud_ml_{timestamp:%Y%m%dT000000}Z.nc"
     return bulk_data_dir / filename
 
 

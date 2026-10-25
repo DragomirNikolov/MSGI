@@ -3,18 +3,22 @@
   "description": "Plot-ready statistics for the ice-fraction development figure. The pickle file preserves the exact bootstrap results used in the plot.",
   "data_file": "IF_development_plot_data.pkl",
   "timesteps": [
+    3,
     2,
     1,
     0,
     -1,
-    -2
+    -2,
+    -3
   ],
   "x_labels": [
+    "$t_{\\mathrm{peak}}$\n$-45\\,\\mathrm{min}$",
     "$t_{\\mathrm{peak}}$\n$-30\\,\\mathrm{min}$",
     "$t_{\\mathrm{peak}}$\n$-15\\,\\mathrm{min}$",
     "$t_{\\mathrm{peak}}$",
     "$t_{\\mathrm{peak}}$\n$+15\\,\\mathrm{min}$",
-    "$t_{\\mathrm{peak}}$\n$+30\\,\\mathrm{min}$"
+    "$t_{\\mathrm{peak}}$\n$+30\\,\\mathrm{min}$",
+    "$t_{\\mathrm{peak}}$\n$+45\\,\\mathrm{min}$"
   ],
   "ice_phase_thresh": 0.9,
   "n_bootstrap": 100,
